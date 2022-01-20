@@ -28,7 +28,8 @@ import weakref
 
 import queue
 import matplotlib.pyplot as plt
-from PIL import Image
+from PIL import Image, ImageFile
+ImageFile.LOAD_TRUNCATED_IMAGES = True
 
 try:
     import pygame
@@ -774,8 +775,9 @@ def game_loop(args):
         clock = pygame.time.Clock()
 
         camera_manager = world.camera_manager
-        depth_sensor_info = world.camera_manager.sensors[2]
 
+        ## Getting the Depth Sensor
+        depth_sensor_info = world.camera_manager.sensors[2]
         depth_camera = world.player.get_world().spawn_actor(
                 depth_sensor_info[-1],
                 camera_manager._camera_transforms[0][0],
@@ -787,6 +789,7 @@ def game_loop(args):
         fov = camera_bp.get_attribute("fov").as_float()
         focal = image_w / (2.0 * np.tan(fov * np.pi / 360.0))
 
+        # Calculating the Calibration Matrix
         K = np.identity(3)
         K[0, 0] = K[1, 1] = focal
         K[0, 2] = image_w / 2.0
@@ -795,6 +798,9 @@ def game_loop(args):
         temp_dir = "./_out"
 
         handled = False
+        point_selected = False
+
+        handled_files = []
 
         while True:
             clock.tick()
@@ -811,15 +817,9 @@ def game_loop(args):
             if pygame.mouse.get_pressed()[0] and not handled:
 
                 screen_pos = pygame.mouse.get_pos()
+                point_selected = True
 
-                # camera_manager = world.camera_manager
-                # depth_sensor_info = world.camera_manager.sensors[2]
-                # depth_camera = world.player.get_world().spawn_actor(
-                #         depth_sensor_info[-1],
-                #         camera_manager._camera_transforms[0][0],
-                #         attach_to=world.player,
-                #         attachment_type=camera_manager._camera_transforms[0][1])
-
+                # Listening to Depth Sensor Data
                 depth_camera.listen(lambda image: image.save_to_disk('_out/%06d.png' % image.frame, carla.ColorConverter.Depth))
                 print("Listened!", len(os.listdir(temp_dir)))
 
@@ -832,28 +832,44 @@ def game_loop(args):
 
             handled = pygame.mouse.get_pressed()[0]
             
+            # Very Inefficient Way
             if len(os.listdir(temp_dir)) > 0:
-                print("deleting", len(os.listdir(temp_dir)))
+                # print("deleting", len(os.listdir(temp_dir)))
+                depth_cam_matrix = depth_camera.get_transform().get_matrix()
                 depth_camera.destroy()
-                for file_ in os.listdir(temp_dir):
-                    # os.remove(os.path.join(temp_dir, file_))
+
+                file_ = os.listdir(temp_dir)[-1]
+                for file__ in os.listdir(temp_dir)[:-1]:
+                    os.remove(os.path.join(temp_dir, file__))
+
+                if file_ not in handled_files and point_selected:
+
+                    point_selected = False
                     d_image = Image.open(os.path.join(temp_dir, file_))
                     d_image = np.array(d_image)
 
-
-                    plt.imshow(d_image)
-                    plt.show()
-
                     os.remove(os.path.join(temp_dir, file_))
 
-                depth = d_image[screen_pos[1], screen_pos[0]]
-                pos_2d = np.array([screen_pos[1], screen_pos[0], 1])
-                print(np.linalg.inv(K) @ pos_2d[:, None] * depth)
+                    # Getting Depth At Selected Pixel Value
+                    depth = d_image[screen_pos[1], screen_pos[0]]
+                    pos_2d = np.array([screen_pos[1], screen_pos[0], 1])
+                    pos_3d_ = np.linalg.inv(K) @ pos_2d[:, None] * depth
+                    print(pos_3d_)
 
-                X = depth / (focal * screen_pos[1] - image_w/2)
-                Y = depth / (focal * screen_pos[0] - image_h/2)
-                Z = depth
-                print(X, Y, Z)
+                    # Converting to 3D coordinates
+                    X = depth / (focal * screen_pos[1] - image_w/2)
+                    Y = depth / (focal * screen_pos[0] - image_h/2)
+                    Z = depth
+
+                    pos_3d = depth_cam_matrix @ np.array([X, Y, Z, 1])[:, None]
+                    pos_3d = pos_3d.reshape(-1)
+                    print(pos_3d)
+
+                    new_destination = carla.Location(x=pos_3d[0], y=pos_3d[1], z=destination.z)
+                    agent.set_destination(new_destination)
+                    print(f"old destination: {destination}, new destination: {new_destination}, vehicle: {vehicle_pos}")
+
+                    handled_files.append(file_)
 
                 depth_camera = world.player.get_world().spawn_actor(
                     depth_sensor_info[-1],
