@@ -26,6 +26,7 @@ import re
 import sys
 import weakref
 
+import cv2
 import queue
 import matplotlib.pyplot as plt
 from PIL import Image, ImageFile
@@ -715,6 +716,40 @@ class CameraManager(object):
         if self.recording:
             image.save_to_disk('_out/%08d' % image.frame)
 
+def callback(image, weak_ref, weak_agent, screen_pos, K, destination):
+    dc_weak = weak_ref()
+    agent_weak = weak_agent()
+    # dest_weak = weak_dest()
+    # print(image)
+    image.convert(cc.Depth)
+    array = np.frombuffer(image.raw_data, dtype=np.dtype("uint8"))
+    array = np.reshape(array, (image.height, image.width, 4))
+    array = array[:, :, :3]
+    im_array = array[:, :, ::-1][:, :, 0]
+
+    depth_cam_matrix = dc_weak.get_transform().get_matrix()
+
+    depth = im_array[screen_pos[1], screen_pos[0]]
+
+    pos_2d = np.array([screen_pos[1], screen_pos[0], 1])
+    pos_3d_ = np.linalg.inv(K) @ pos_2d[:, None] * depth
+    pos_3d_ = pos_3d_.reshape(-1)
+    pos_3d_ = np.array([pos_3d_[0], pos_3d_[1], pos_3d_[2], 1])
+
+    pos_3d_ = depth_cam_matrix @ pos_3d_[:, None]
+    pos_3d_ = pos_3d_.reshape(-1)
+
+    new_destination = carla.Location(x=pos_3d_[0], y=pos_3d_[1], z=destination.z)
+    agent_weak.set_destination(new_destination, start_location=agent_weak._vehicle.get_transform().location)
+    print(f"old destination: {destination}, new destination: {new_destination}")
+    print(f"vehicle: {agent_weak._vehicle.get_transform().location}")
+
+    # dest_weak = new_destination
+    # cv2.imwrite(".\\_out\\test.jpg", im_array)
+    # image.save_to_disk('_out/%06d.jpg' % image.frame, carla.ColorConverter.Depth)
+
+    time.sleep(0.5)
+    dc_weak.stop()
 
 # ==============================================================================
 # -- Game Loop ---------------------------------------------------------
@@ -770,7 +805,7 @@ def game_loop(args):
         agent.set_destination(destination)
 
         np_destination = np.array([destination.x, destination.y, destination.z])
-        print(f"Destination is {np_destination}!")
+        print(f"Destination is {destination}!")
 
         clock = pygame.time.Clock()
 
@@ -795,12 +830,15 @@ def game_loop(args):
         K[0, 2] = image_w / 2.0
         K[1, 2] = image_h / 2.0
 
-        temp_dir = "./_out"
+        temp_dir = ".\\_out"
 
         handled = False
         point_selected = False
 
         handled_files = []
+
+        for file_ in os.listdir(temp_dir):
+            os.remove(os.path.join(temp_dir, file_))
 
         while True:
             clock.tick()
@@ -813,75 +851,104 @@ def game_loop(args):
 
             curr_position = agent._vehicle.get_transform().location
             vehicle_pos = np.array([curr_position.x, curr_position.y, curr_position.z, 1])
+            distance = np.sqrt((destination.x - curr_position.x)**2 +
+                            (destination.y - curr_position.y)**2)
+            
+            # print("distance t o destination: ", distance)
 
             if pygame.mouse.get_pressed()[0] and not handled:
 
                 screen_pos = pygame.mouse.get_pos()
-                point_selected = True
+                # point_selected = True
 
                 # Listening to Depth Sensor Data
-                depth_camera.listen(lambda image: image.save_to_disk('_out/%06d.png' % image.frame, carla.ColorConverter.Depth))
+                # depth_camera.listen(lambda image: image.save_to_disk('_out/%06d.jpg' % image.frame, carla.ColorConverter.Depth))
+                weak_dc = weakref.ref(depth_camera)
+                weak_agent = weakref.ref(agent)
+
+                # depth_camera.listen(lambda image: callback(image, weak_dc))
+                depth_camera.listen(lambda image: callback(image, weak_dc, weak_agent, screen_pos, K, destination))
                 print("Listened!", len(os.listdir(temp_dir)))
+                print("agent destination: ", agent.target_destination)
 
                 distance = np.sqrt((destination.x - curr_position.x)**2 +
                             (destination.y - curr_position.y)**2)
-                print(vehicle_pos, np_destination, distance)
+                print(distance)
 
                 pygame.draw.circle(display, (0,255,0), screen_pos, 5)
                 pygame.display.flip()
 
             handled = pygame.mouse.get_pressed()[0]
             
-            # Very Inefficient Way
-            if len(os.listdir(temp_dir)) > 0:
-                # print("deleting", len(os.listdir(temp_dir)))
-                depth_cam_matrix = depth_camera.get_transform().get_matrix()
-                depth_camera.destroy()
+            # # Very Inefficient Way
+            # if len(os.listdir(temp_dir)) == 3:
+            #     depth_cam_matrix = depth_camera.get_transform().get_matrix()
+            #     # depth_cam_matrix_inv = depth_camera.get_transform().get_inverse_matrix()
+            #     depth_camera.destroy()
+            #     depth_camera = world.player.get_world().spawn_actor(
+            #         depth_sensor_info[-1],
+            #         camera_manager._camera_transforms[0][0],
+            #         attach_to=world.player,
+            #         attachment_type=camera_manager._camera_transforms[0][1])
 
-                file_ = os.listdir(temp_dir)[-1]
-                for file__ in os.listdir(temp_dir)[:-1]:
-                    os.remove(os.path.join(temp_dir, file__))
+            #     file_ = os.listdir(temp_dir)[0]
+            #     file_path = os.path.join(temp_dir, file_)
+            #     print(file_path)
 
-                if file_ not in handled_files and point_selected:
+            #     if file_ not in handled_files and point_selected:
+            #         point_selected = False
+                   
+            #         d_image = cv2.imread(file_path, 0) 
+            #         print(d_image.shape, screen_pos)
 
-                    point_selected = False
-                    d_image = Image.open(os.path.join(temp_dir, file_))
-                    d_image = np.array(d_image)
+            #         depth = d_image[screen_pos[1], screen_pos[0]]
+            #         print(depth)
+            #         pos_2d = np.array([screen_pos[1], screen_pos[0], 1])
+            #         pos_3d_ = np.linalg.inv(K) @ pos_2d[:, None] * depth
+            #         pos_3d_ = pos_3d_.reshape(-1)
+            #         pos_3d_ = np.array([pos_3d_[0], pos_3d_[1], pos_3d_[2], 1])
 
-                    os.remove(os.path.join(temp_dir, file_))
+            #         print("original point: ", pos_3d_)
+            #         # inv_pos_3d_ = pos_3d_[:, None].T @ depth_cam_matrix_inv
+            #         # inv_pos_3d_ = inv_pos_3d_.reshape(-1)
+            #         # print("inverse: ", inv_pos_3d_)
 
-                    # Getting Depth At Selected Pixel Value
-                    depth = d_image[screen_pos[1], screen_pos[0]]
-                    pos_2d = np.array([screen_pos[1], screen_pos[0], 1])
-                    pos_3d_ = np.linalg.inv(K) @ pos_2d[:, None] * depth
-                    print(pos_3d_)
+            #         pos_3d_ = depth_cam_matrix @ pos_3d_[:, None]
+            #         pos_3d_ = pos_3d_.reshape(-1)
 
-                    # Converting to 3D coordinates
-                    X = depth / (focal * screen_pos[1] - image_w/2)
-                    Y = depth / (focal * screen_pos[0] - image_h/2)
-                    Z = depth
+            #         # # Converting to 3D coordinates
+            #         # X = depth / (focal * screen_pos[1] - image_w/2)
+            #         # Y = depth / (focal * screen_pos[0] - image_h/2)
+            #         # Z = depth
 
-                    pos_3d = depth_cam_matrix @ np.array([X, Y, Z, 1])[:, None]
-                    pos_3d = pos_3d.reshape(-1)
-                    print(pos_3d)
+            #         # pos_3d = depth_cam_matrix @ np.array([X, Y, Z, 1])[:, None]
+            #         # pos_3d = pos_3d.reshape(-1)
+            #         # # print(pos_3d)
 
-                    new_destination = carla.Location(x=pos_3d[0], y=pos_3d[1], z=destination.z)
-                    agent.set_destination(new_destination)
-                    print(f"old destination: {destination}, new destination: {new_destination}, vehicle: {vehicle_pos}")
+            #         new_destination = carla.Location(x=pos_3d_[0], y=pos_3d_[1], z=destination.z)
+            #         agent.set_destination(new_destination)
+            #         print(f"old destination: {destination}, new destination: {new_destination}")
+            #         print(f"vehicle: {vehicle_pos}")
 
-                    handled_files.append(file_)
+            #         destination = new_destination
 
-                depth_camera = world.player.get_world().spawn_actor(
-                    depth_sensor_info[-1],
-                    camera_manager._camera_transforms[0][0],
-                    attach_to=world.player,
-                    attachment_type=camera_manager._camera_transforms[0][1])
+            #         distance = np.sqrt((destination.x - curr_position.x)**2 +
+            #                 (destination.y - curr_position.y)**2)
+            
+            #         print("distance to destination: ", distance)
+
+            #         handled_files.append(file_)
+
+            #         # for file_ in os.listdir(temp_dir):
+            #         #     os.remove(os.path.join(temp_dir, file_))
 
             world.tick(clock)
             world.render(display)
             pygame.display.flip()
 
-            if agent.done():
+            # if agent.done():
+            if distance < 5.5:
+                print("reached destination: ", vehicle_pos)
                 if args.loop:
                     agent.set_destination(random.choice(spawn_points).location)
                     world.hud.notification(
@@ -963,7 +1030,7 @@ def main():
         '-b', '--behavior', type=str,
         choices=["cautious", "normal", "aggressive"],
         help='Choose one of the possible agent behaviors (default: normal) ',
-        default='normal')
+        default='aggressive')
     argparser.add_argument(
         '-s', '--seed',
         help='Set seed for repeating executions (default: None)',
