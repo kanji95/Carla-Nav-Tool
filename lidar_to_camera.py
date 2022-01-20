@@ -255,7 +255,7 @@ def tutorial(args):
 
             # Save the image using Pillow module.
             image = Image.fromarray(im_array)
-            image.save("_out/%08d.png" % image_data.frame)
+            image.save("_out\%08d.png" % image_data.frame)
 
     finally:
         # Apply the original settings when exiting.
@@ -266,8 +266,8 @@ def tutorial(args):
             camera.destroy()
         if lidar:
             lidar.destroy()
-        if vehicle:
-            vehicle.destroy()
+        # if vehicle:
+        #     vehicle.destroy()
 
 
 def main():

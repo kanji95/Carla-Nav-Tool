@@ -16,6 +16,7 @@ import argparse
 import collections
 import datetime
 import glob
+import time
 import logging
 import math
 import os
@@ -24,6 +25,10 @@ import numpy.random as random
 import re
 import sys
 import weakref
+
+import queue
+import matplotlib.pyplot as plt
+from PIL import Image
 
 try:
     import pygame
@@ -594,6 +599,7 @@ class CameraManager(object):
         self.sensor = None
         self.surface = None
         self._parent = parent_actor
+        print(self._parent)
         self.hud = hud
         self.recording = False
         bound_y = 0.5 + self._parent.bounding_box.extent.y
@@ -648,6 +654,7 @@ class CameraManager(object):
             if self.sensor is not None:
                 self.sensor.destroy()
                 self.surface = None
+            # print(index, self.transform_index, self._camera_transforms[self.transform_index][0])
             self.sensor = self._parent.get_world().spawn_actor(
                 self.sensors[index][-1],
                 self._camera_transforms[self.transform_index][0],
@@ -761,11 +768,33 @@ def game_loop(args):
         destination = random.choice(spawn_points).location
         agent.set_destination(destination)
 
-        print(f"Destination is {destination}!")
-
         np_destination = np.array([destination.x, destination.y, destination.z])
+        print(f"Destination is {np_destination}!")
 
         clock = pygame.time.Clock()
+
+        camera_manager = world.camera_manager
+        depth_sensor_info = world.camera_manager.sensors[2]
+
+        depth_camera = world.player.get_world().spawn_actor(
+                depth_sensor_info[-1],
+                camera_manager._camera_transforms[0][0],
+                attach_to=world.player,
+                attachment_type=camera_manager._camera_transforms[0][1])
+
+        image_w = args.width
+        image_h = args.height
+        fov = camera_bp.get_attribute("fov").as_float()
+        focal = image_w / (2.0 * np.tan(fov * np.pi / 360.0))
+
+        K = np.identity(3)
+        K[0, 0] = K[1, 1] = focal
+        K[0, 2] = image_w / 2.0
+        K[1, 2] = image_h / 2.0
+
+        temp_dir = "./_out"
+
+        handled = False
 
         while True:
             clock.tick()
@@ -779,61 +808,58 @@ def game_loop(args):
             curr_position = agent._vehicle.get_transform().location
             vehicle_pos = np.array([curr_position.x, curr_position.y, curr_position.z, 1])
 
-            if pygame.mouse.get_pressed()[0]:
+            if pygame.mouse.get_pressed()[0] and not handled:
+
                 screen_pos = pygame.mouse.get_pos()
 
-                camera = world.camera_manager.sensor
-                camera_depth = world.camera_manager.sensors[1][-1]
-                # print(camera, camera_depth)
-                transform_mat = camera.get_transform().get_matrix()
-                transform_mat = np.round(transform_mat, decimals=2)
+                # camera_manager = world.camera_manager
+                # depth_sensor_info = world.camera_manager.sensors[2]
+                # depth_camera = world.player.get_world().spawn_actor(
+                #         depth_sensor_info[-1],
+                #         camera_manager._camera_transforms[0][0],
+                #         attach_to=world.player,
+                #         attachment_type=camera_manager._camera_transforms[0][1])
 
-                
-                # image_w = args.width
-                # image_h = args.height
-                # fov = camera_bp.get_attribute("fov").as_float()
-                # focal = image_w / (2.0 * np.tan(fov * np.pi / 360.0))
-
-                # K = np.identity(3)
-                # K[0, 0] = K[1, 1] = focal
-                # K[0, 2] = image_w / 2.0
-                # K[1, 2] = image_h / 2.0
-
-                # print(K)
-
-                # P = np.array(camera.get_transform().get_inverse_matrix())[:3]
-                # print(P)
-
-                # P = K @ transform_mat[:3]
-
-                # pos_2d = np.array([screen_pos[0], screen_pos[1], 1])
-                # pos_3d = np.linalg.pinv(P) @ pos_2d[:, None]
-                # pos_3d = P.T @ pos_2d[:, None]
-
-                # pos_3d = pos_3d.reshape(-1)
-                # pos_3d = pos_3d / pos_3d[-1]
+                depth_camera.listen(lambda image: image.save_to_disk('_out/%06d.png' % image.frame, carla.ColorConverter.Depth))
+                print("Listened!", len(os.listdir(temp_dir)))
 
                 distance = np.sqrt((destination.x - curr_position.x)**2 +
-                               (destination.y - curr_position.y)**2)
-                               # (destination.z - curr_position.z)**2)
-
-                # pos_3d = np.linalg.pinv(P) @ pos_2d[:, None]
-                # pos_3d = pos_3d.reshape(-1)
-
-                # pos_3d = pos_3d / pos_3d[-1]
-
-                # print(pos_2d, pos_3d)
+                            (destination.y - curr_position.y)**2)
                 print(vehicle_pos, np_destination, distance)
 
                 pygame.draw.circle(display, (0,255,0), screen_pos, 5)
                 pygame.display.flip()
 
-            # curr_position = agent._vehicle.get_transform().location
+            handled = pygame.mouse.get_pressed()[0]
+            
+            if len(os.listdir(temp_dir)) > 0:
+                print("deleting", len(os.listdir(temp_dir)))
+                depth_camera.destroy()
+                for file_ in os.listdir(temp_dir):
+                    # os.remove(os.path.join(temp_dir, file_))
+                    d_image = Image.open(os.path.join(temp_dir, file_))
+                    d_image = np.array(d_image)
 
-            # distance = np.sqrt((destination.x - curr_position.x)**2 +
-            #                    (destination.y - curr_position.y)**2 +
-            #                    (destination.z - curr_position.z)**2)
-            # print(f"Distance to destination is {distance}!")
+
+                    plt.imshow(d_image)
+                    plt.show()
+
+                    os.remove(os.path.join(temp_dir, file_))
+
+                depth = d_image[screen_pos[1], screen_pos[0]]
+                pos_2d = np.array([screen_pos[1], screen_pos[0], 1])
+                print(np.linalg.inv(K) @ pos_2d[:, None] * depth)
+
+                X = depth / (focal * screen_pos[1] - image_w/2)
+                Y = depth / (focal * screen_pos[0] - image_h/2)
+                Z = depth
+                print(X, Y, Z)
+
+                depth_camera = world.player.get_world().spawn_actor(
+                    depth_sensor_info[-1],
+                    camera_manager._camera_transforms[0][0],
+                    attach_to=world.player,
+                    attachment_type=camera_manager._camera_transforms[0][1])
 
             world.tick(clock)
             world.render(display)
