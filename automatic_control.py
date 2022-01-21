@@ -25,6 +25,7 @@ import numpy.random as random
 import re
 import sys
 import weakref
+from pprint import pprint
 
 import cv2
 import queue
@@ -330,12 +331,14 @@ class HUD(object):
             self._info_text += [
                 ('Speed:', control.speed, 0.0, 5.556),
                 ('Jump:', control.jump)]
+        player_position = world.player.get_transform().location
         self._info_text += [
             '',
             'Collision:',
             collision,
             '',
-            'Number of vehicles: % 8d' % len(vehicles)]
+            'Number of vehicles: % 8d' % len(vehicles),
+            f'Location: X={player_position.x:.3f}, Y={player_position.y:.3f}']
 
         if len(vehicles) > 1:
             self._info_text += ['Nearby vehicles:']
@@ -730,9 +733,16 @@ def pixel_to_world(image, weak_ref, weak_agent, screen_pos, K, destination):
 
     depth_cam_matrix = dc_weak.get_transform().get_matrix()
     depth_cam_matrix_inv = dc_weak.get_transform().get_inverse_matrix()
+    
+    depth_cam_matrix = np.round(np.array(depth_cam_matrix), decimals=1)
+    depth_cam_matrix_inv = np.round(np.array(depth_cam_matrix_inv), decimals=1)
 
-    depth_cam_matrix = np.array(depth_cam_matrix)
-    depth_cam_matrix_inv = np.array(depth_cam_matrix_inv)
+    vehicle_matrix = agent_weak._vehicle.get_transform().get_matrix()
+
+    print("=========================")
+    pprint(depth_cam_matrix)
+    pprint(depth_cam_matrix_inv)
+    print("=========================")
 
     # R = depth_cam_matrix[:3, :3]
     # t = depth_cam_matrix[:3, 3:]
@@ -745,17 +755,26 @@ def pixel_to_world(image, weak_ref, weak_agent, screen_pos, K, destination):
     depth = im_array[screen_pos[1], screen_pos[0]]
 
     pos_2d = np.array([screen_pos[1], screen_pos[0], 1])
+
+    # pos_3d = depth * np.linalg.pinv(K @ depth_cam_matrix[:3]) @ pos_2d[:, None]
+    # pos_3d = pos_3d.reshape(-1)
+
     pos_3d_ = np.linalg.inv(K) @ pos_2d[:, None] * depth
-    # print(np.linalg.pinv(K @ depth_cam_matrix[:3]).shape)
-    # print("testing: ", np.linalg.pinv(depth_cam_matrix_inv[:3]) @ np.linalg.inv(K) @ pos_2d[:, None] * depth)
+    
     pos_3d_ = pos_3d_.reshape(-1)
     pos_3d_ = np.array([pos_3d_[0], pos_3d_[1], pos_3d_[2], 1])
 
-    # print("New Matrix: ", (new_cam_matrix @ pos_3d_[:, None]).reshape(-1))
-
-    # pos_3d_ = depth_cam_matrix @ pos_3d_[:, None]
+    # pos_3d_ = depth_cam_matrix_inv @ pos_3d_[:, None]
     pos_3d_ = depth_cam_matrix @ pos_3d_[:, None]
     pos_3d_ = pos_3d_.reshape(-1)
+
+    X = (screen_pos[1] - K[0, 2]) * (depth / K[0, 0])
+    Y = (screen_pos[0] - K[1, 2]) * (depth / K[1, 1])
+    Z = depth
+
+    # xyz_pos_ = np.array([X, Y, Z, 1])
+    # xyz_pos = world_matrix @ vehicle_matrix @ xyz_pos_[:, None]
+    # xyz_pos = xyz_pos.reshape(-1)
 
     new_destination = carla.Location(x=pos_3d_[0], y=pos_3d_[1], z=destination.z)
     agent_weak.set_destination(new_destination, start_location=agent_weak._vehicle.get_transform().location)
@@ -763,6 +782,8 @@ def pixel_to_world(image, weak_ref, weak_agent, screen_pos, K, destination):
     print(f"old destination : {destination}")
     print(f"new destination : {new_destination}")
     print(f"vehicle position: {agent_weak._vehicle.get_transform().location}")
+    # print(f"Est. position   : {xyz_pos}")
+    # print(f"X={X}, Y={Y}, Z={Z}")
     print("=======================================")
 
     # dest_weak = new_destination
@@ -795,7 +816,8 @@ def game_loop(args):
         client.set_timeout(4.0)
 
         blueprint_lib = client.get_world().get_blueprint_library()
-        camera_bp = blueprint_lib.filter("sensor.camera.rgb")[0]
+        camera_bp = blueprint_lib.filter("sensor.camera.depth")[0]
+        # print(blueprint_lib.filter('vehicle.*.*'))
 
         traffic_manager = client.get_trafficmanager()
         sim_world = client.get_world()
@@ -820,6 +842,12 @@ def game_loop(args):
         else:
             agent = BehaviorAgent(world.player, behavior=args.behavior)
 
+        ## Ignore Rules
+        agent.ignore_traffic_lights(True)
+        agent.ignore_stop_signs(True)
+        # agent.follow_speed_limits(True)
+        # agent.set_target_speed(10)
+
         # Set the agent destination
         spawn_points = world.map.get_spawn_points()
         destination = random.choice(spawn_points).location
@@ -840,6 +868,19 @@ def game_loop(args):
                 attach_to=world.player,
                 attachment_type=camera_manager._camera_transforms[0][1])
 
+        # ## Getring LiDar Sensor
+        # lidar_sensor_info = world.camera_manager.sensors[-1]
+        # lidar_sensor = world.player.get_world().spawn_actor(
+        #     lidar_sensor_info[-1],
+        #     camera_manager._camera_transforms[0][0],
+        #     attach_to=world.player,
+        #     attachment_type=camera_manager._camera_transforms[0][1])
+
+        # world.camera_manager.set_sensor(6)
+        # print("Lidar sensor on!")
+        # world.camera_manager.set_sensor(0)
+        # print("RGB sensor on!")
+        
         image_w = args.width
         image_h = args.height
         fov = camera_bp.get_attribute("fov").as_float()
@@ -854,13 +895,11 @@ def game_loop(args):
         temp_dir = ".\\_out"
 
         handled = False
-        # point_selected = False
-
-        # handled_files = []
 
         for file_ in os.listdir(temp_dir):
             os.remove(os.path.join(temp_dir, file_))
 
+        sensor_idx = 0
         while True:
             clock.tick()
             if args.sync:
@@ -885,18 +924,30 @@ def game_loop(args):
                 weak_dc = weakref.ref(depth_camera)
                 weak_agent = weakref.ref(agent)
 
+                # world_matrix = world.player.get_transform().get_matrix()
+                # world_matrix = np.array(world_matrix)
+
                 # depth_camera.listen(lambda image: pixel_to_world(image, weak_dc))
                 depth_camera.listen(lambda image: pixel_to_world(image, weak_dc, weak_agent, screen_pos, K, destination))
                 # print("Listened!", len(os.listdir(temp_dir)))
 
+                # if sensor_idx == 0:
+                #     sensor_idx = 6
+                #     print("Lidar sensor on!")
+                # else:
+                #     sensor_idx = 0
+                #     print("RGB sensor on!")
+                # world.camera_manager.set_sensor(sensor_idx)
+
                 # print("agent destination: ", agent.target_destination, "distance: ", distance)
 
-                pygame.draw.circle(display, (0,255,0), screen_pos, 5)
+                pygame.draw.circle(display, (0,255,0), screen_pos, 10)
                 pygame.display.flip()
 
             handled = pygame.mouse.get_pressed()[0]
 
-            destination = agent.target_destination
+            if agent.target_destination:
+                destination = agent.target_destination
             distance = np.sqrt((destination.x - curr_position.x)**2 +
                         (destination.y - curr_position.y)**2)
 
@@ -905,7 +956,6 @@ def game_loop(args):
             pygame.display.flip()
 
             if agent.done():
-            # if distance < 5.5:
                 print("reached destination: ", vehicle_pos)
                 if args.loop:
                     agent.set_destination(random.choice(spawn_points).location)
@@ -972,7 +1022,7 @@ def main():
     argparser.add_argument(
         '--filter',
         metavar='PATTERN',
-        default='vehicle.*',
+        default='vehicle.audi*',
         help='Actor filter (default: "vehicle.*")')
     argparser.add_argument(
         '-l', '--loop',
