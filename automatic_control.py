@@ -724,12 +724,16 @@ class CameraManager(object):
 def pixel_to_world(image, weak_ref, weak_agent, screen_pos, K, destination):
     dc_weak = weak_ref()
     agent_weak = weak_agent()
+
+    image.save_to_disk('_out/%06d.jpg' % image.frame)
     
-    image.convert(cc.Depth)
+    # image.convert(cc.Depth)
     array = np.frombuffer(image.raw_data, dtype=np.dtype("uint8"))
     array = np.reshape(array, (image.height, image.width, 4))
     array = array[:, :, :3]
-    im_array = array[:, :, ::-1][:, :, 0]
+    im_array = array[:, :, ::-1] #[:, :, 0]
+
+    print(im_array.shape)
 
     depth_cam_matrix = dc_weak.get_transform().get_matrix()
     depth_cam_matrix_inv = dc_weak.get_transform().get_inverse_matrix()
@@ -738,11 +742,24 @@ def pixel_to_world(image, weak_ref, weak_agent, screen_pos, K, destination):
     depth_cam_matrix_inv = np.round(np.array(depth_cam_matrix_inv), decimals=1)
 
     vehicle_matrix = agent_weak._vehicle.get_transform().get_matrix()
+    vehicle_matrix_inv = agent_weak._vehicle.get_transform().get_inverse_matrix()
+
+    vehicle_matrix = np.round(np.array(vehicle_matrix), decimals=1)
 
     print("=========================")
+    print("Depth Camera Matrix:")
     pprint(depth_cam_matrix)
+    print("Depth Camera Inv Matrix:")
     pprint(depth_cam_matrix_inv)
     print("=========================")
+
+
+    world_point = np.array([-2.5, 0, 15])
+    pixel_point = K @ world_point[:, None]
+
+    pixel_point = pixel_point.reshape(-1)
+    pixel_point = pixel_point/pixel_point[-1]
+    print("Dummy Pixel Coord: ", pixel_point)
 
     # R = depth_cam_matrix[:3, :3]
     # t = depth_cam_matrix[:3, 3:]
@@ -752,37 +769,55 @@ def pixel_to_world(image, weak_ref, weak_agent, screen_pos, K, destination):
     # depth_cam_matrix_inv = np.array(depth_cam_matrix_inv)
     # print(depth_cam_matrix.shape, depth_cam_matrix_inv.shape)
 
-    depth = im_array[screen_pos[1], screen_pos[0]]
+    print("Pixel Coords: ", screen_pos)
+    # screen_pos = (screen_pos[0] - (1280 - 720), screen_pos[1])
+    print("After Pixel Coords: ", screen_pos)
+    R, G, B = im_array[screen_pos[1], screen_pos[0]]
+    normalized = (R + G * 256 + B * 256 * 256) / (256 * 256 * 256 - 1)
+    depth = 1000 * normalized
+
+    print("Depth: ", depth)
+    # depth = im_array[screen_pos[1], screen_pos[0]]
 
     pos_2d = np.array([screen_pos[1], screen_pos[0], 1])
+    print("2D Pixel Coords Homogenous: ", pos_2d)
 
     # pos_3d = depth * np.linalg.pinv(K @ depth_cam_matrix[:3]) @ pos_2d[:, None]
     # pos_3d = pos_3d.reshape(-1)
 
-    pos_3d_ = np.linalg.inv(K) @ pos_2d[:, None] * depth
+    pos_3d__ = np.linalg.inv(K) @ pos_2d[:, None] * depth
+    pos_3d__ = pos_3d__.reshape(-1)
+    print("Camera Coordinates: ", pos_3d__)
     
-    pos_3d_ = pos_3d_.reshape(-1)
+    ## Order Change
+    # import pdb; pdb.set_trace()
+    pos_3d_ = np.array([pos_3d__[2], pos_3d__[1], pos_3d__[0]])
+    print("After Camera Coordinates: ", pos_3d_)
+
     pos_3d_ = np.array([pos_3d_[0], pos_3d_[1], pos_3d_[2], 1])
 
     # pos_3d_ = depth_cam_matrix_inv @ pos_3d_[:, None]
     pos_3d_ = depth_cam_matrix @ pos_3d_[:, None]
     pos_3d_ = pos_3d_.reshape(-1)
+    print("After Camera Matrix World Coordinates: ", pos_3d_)
 
-    X = (screen_pos[1] - K[0, 2]) * (depth / K[0, 0])
-    Y = (screen_pos[0] - K[1, 2]) * (depth / K[1, 1])
+    X = (screen_pos[0] - K[0, 2]) * (depth / K[0, 0])
+    Y = (screen_pos[1] - K[1, 2]) * (depth / K[1, 1])
     Z = depth
 
-    # xyz_pos_ = np.array([X, Y, Z, 1])
-    # xyz_pos = world_matrix @ vehicle_matrix @ xyz_pos_[:, None]
-    # xyz_pos = xyz_pos.reshape(-1)
+    xyz_pos_ = np.array([X, Y, Z, 1])
+    xyz_pos = depth_cam_matrix @ xyz_pos_[:, None]
+    xyz_pos = xyz_pos.reshape(-1)
 
     new_destination = carla.Location(x=pos_3d_[0], y=pos_3d_[1], z=destination.z)
+
+    # geo_location = world.world.get_map().transform_to_geolocation(new_destination)
     agent_weak.set_destination(new_destination, start_location=agent_weak._vehicle.get_transform().location)
     print("=======================================")
     print(f"old destination : {destination}")
     print(f"new destination : {new_destination}")
     print(f"vehicle position: {agent_weak._vehicle.get_transform().location}")
-    # print(f"Est. position   : {xyz_pos}")
+    print(f"Est. position   : {xyz_pos}")
     # print(f"X={X}, Y={Y}, Z={Z}")
     print("=======================================")
 
@@ -860,6 +895,9 @@ def game_loop(args):
 
         camera_manager = world.camera_manager
 
+        print(world.camera_manager.sensor)
+        print(world.camera_manager.sensor.get_transform().get_matrix())
+
         ## Getting the Depth Sensor
         depth_sensor_info = world.camera_manager.sensors[2]
         depth_camera = world.player.get_world().spawn_actor(
@@ -892,12 +930,14 @@ def game_loop(args):
         K[0, 2] = image_w / 2.0
         K[1, 2] = image_h / 2.0
 
+        print("Intinsic Matrix:\n", K)
+
         temp_dir = ".\\_out"
 
         handled = False
 
-        for file_ in os.listdir(temp_dir):
-            os.remove(os.path.join(temp_dir, file_))
+        # for file_ in os.listdir(temp_dir):
+        #     os.remove(os.path.join(temp_dir, file_))
 
         sensor_idx = 0
         while True:
@@ -968,7 +1008,7 @@ def game_loop(args):
 
             control = agent.run_step()
             control.manual_gear_shift = False
-            world.player.apply_control(control)
+            # world.player.apply_control(control)
 
     finally:
 
