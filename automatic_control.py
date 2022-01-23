@@ -613,7 +613,7 @@ class CameraManager(object):
         attachment = carla.AttachmentType
         self._camera_transforms = [
             (carla.Transform(
-                carla.Location(x=-5.5, z=2.5), carla.Rotation(pitch=8.0)), attachment.SpringArm),
+                carla.Location(x=-1.5, y=0, z=2), carla.Rotation(pitch=0.0)), attachment.Rigid),
             (carla.Transform(
                 carla.Location(x=1.6, z=1.7)), attachment.Rigid),
             (carla.Transform(
@@ -661,7 +661,8 @@ class CameraManager(object):
             if self.sensor is not None:
                 self.sensor.destroy()
                 self.surface = None
-            # print(index, self.transform_index, self._camera_transforms[self.transform_index][0])
+            print(index, self.transform_index, self._camera_transforms[self.transform_index][0])
+            print(self.sensors[index])
             self.sensor = self._parent.get_world().spawn_actor(
                 self.sensors[index][-1],
                 self._camera_transforms[self.transform_index][0],
@@ -725,7 +726,7 @@ def pixel_to_world(image, weak_ref, weak_agent, screen_pos, K, destination):
     dc_weak = weak_ref()
     agent_weak = weak_agent()
 
-    image.save_to_disk('_out/%06d.jpg' % image.frame)
+    # image.save_to_disk('_out/%06d.jpg' % image.frame)
     
     # image.convert(cc.Depth)
     array = np.frombuffer(image.raw_data, dtype=np.dtype("uint8"))
@@ -738,8 +739,8 @@ def pixel_to_world(image, weak_ref, weak_agent, screen_pos, K, destination):
     depth_cam_matrix = dc_weak.get_transform().get_matrix()
     depth_cam_matrix_inv = dc_weak.get_transform().get_inverse_matrix()
     
-    depth_cam_matrix = np.round(np.array(depth_cam_matrix), decimals=1)
-    depth_cam_matrix_inv = np.round(np.array(depth_cam_matrix_inv), decimals=1)
+    depth_cam_matrix = np.round(np.array(depth_cam_matrix), decimals=2)
+    depth_cam_matrix_inv = np.round(np.array(depth_cam_matrix_inv), decimals=2)
 
     vehicle_matrix = agent_weak._vehicle.get_transform().get_matrix()
     vehicle_matrix_inv = agent_weak._vehicle.get_transform().get_inverse_matrix()
@@ -749,8 +750,10 @@ def pixel_to_world(image, weak_ref, weak_agent, screen_pos, K, destination):
     print("=========================")
     print("Depth Camera Matrix:")
     pprint(depth_cam_matrix)
-    print("Depth Camera Inv Matrix:")
-    pprint(depth_cam_matrix_inv)
+    # print("Depth Camera Inv Matrix:")
+    # pprint(depth_cam_matrix_inv)
+    print("Vehicle Matrix:")
+    pprint(vehicle_matrix)
     print("=========================")
 
 
@@ -761,29 +764,24 @@ def pixel_to_world(image, weak_ref, weak_agent, screen_pos, K, destination):
     pixel_point = pixel_point/pixel_point[-1]
     print("Dummy Pixel Coord: ", pixel_point)
 
-    # R = depth_cam_matrix[:3, :3]
-    # t = depth_cam_matrix[:3, 3:]
-    # new_cam_matrix = np.hstack([R.T, -R.T @ t])
-    # new_cam_matrix = np.vstack([new_cam_matrix, np.array([0., 0., 0., 1.])[None]])
-    # print(new_cam_matrix)
-    # depth_cam_matrix_inv = np.array(depth_cam_matrix_inv)
-    # print(depth_cam_matrix.shape, depth_cam_matrix_inv.shape)
-
     print("Pixel Coords: ", screen_pos)
-    # screen_pos = (screen_pos[0] - (1280 - 720), screen_pos[1])
-    print("After Pixel Coords: ", screen_pos)
+
     R, G, B = im_array[screen_pos[1], screen_pos[0]]
     normalized = (R + G * 256 + B * 256 * 256) / (256 * 256 * 256 - 1)
     depth = 1000 * normalized
+    # depth = depth - 5.5
 
     print("Depth: ", depth)
     # depth = im_array[screen_pos[1], screen_pos[0]]
 
-    pos_2d = np.array([screen_pos[1], screen_pos[0], 1])
+    pos_2d = np.array([screen_pos[0], screen_pos[1], 1])
+    # pos_2d = np.array([screen_pos[1], -1, screen_pos[0]])
     print("2D Pixel Coords Homogenous: ", pos_2d)
 
-    # pos_3d = depth * np.linalg.pinv(K @ depth_cam_matrix[:3]) @ pos_2d[:, None]
-    # pos_3d = pos_3d.reshape(-1)
+    # correction_matrix = np.array([[ 0,  1,  0 ], [ 0,  0, -1 ], [ 1,  0,  0 ]])
+
+
+    print("Camera Intrinsic Matrix:\n", K)
 
     pos_3d__ = np.linalg.inv(K) @ pos_2d[:, None] * depth
     pos_3d__ = pos_3d__.reshape(-1)
@@ -791,7 +789,9 @@ def pixel_to_world(image, weak_ref, weak_agent, screen_pos, K, destination):
     
     ## Order Change
     # import pdb; pdb.set_trace()
-    pos_3d_ = np.array([pos_3d__[2], pos_3d__[1], pos_3d__[0]])
+    pos_3d_ = np.array([pos_3d__[2], pos_3d__[0], pos_3d__[1]])
+    # pos_3d_ = np.array([pos_3d__[1], pos_3d__[2], pos_3d__[0]])
+    # pos_3d_ = pos_3d__
     print("After Camera Coordinates: ", pos_3d_)
 
     pos_3d_ = np.array([pos_3d_[0], pos_3d_[1], pos_3d_[2], 1])
@@ -886,7 +886,7 @@ def game_loop(args):
         # Set the agent destination
         spawn_points = world.map.get_spawn_points()
         destination = random.choice(spawn_points).location
-        agent.set_destination(destination)
+        # agent.set_destination(destination)
 
         np_destination = np.array([destination.x, destination.y, destination.z])
         print(f"Destination is {destination}!")
@@ -895,8 +895,11 @@ def game_loop(args):
 
         camera_manager = world.camera_manager
 
-        print(world.camera_manager.sensor)
-        print(world.camera_manager.sensor.get_transform().get_matrix())
+        # print(world.camera_manager.sensor)
+        rgb_matrix = world.camera_manager.sensor.get_transform().get_matrix()
+        rgb_matrix = np.array(rgb_matrix)
+        rgb_matrix = np.round(rgb_matrix, decimals=2)
+        # pprint(np.array(rgb_matrix))
 
         ## Getting the Depth Sensor
         depth_sensor_info = world.camera_manager.sensors[2]
@@ -936,8 +939,8 @@ def game_loop(args):
 
         handled = False
 
-        # for file_ in os.listdir(temp_dir):
-        #     os.remove(os.path.join(temp_dir, file_))
+        for file_ in os.listdir(temp_dir):
+            os.remove(os.path.join(temp_dir, file_))
 
         sensor_idx = 0
         while True:
@@ -950,9 +953,9 @@ def game_loop(args):
                 return
 
             curr_position = agent._vehicle.get_transform().location
-            vehicle_pos = np.array([curr_position.x, curr_position.y, curr_position.z, 1])
-            distance = np.sqrt((destination.x - curr_position.x)**2 +
-                                (destination.y - curr_position.y)**2)
+            # vehicle_pos = np.array([curr_position.x, curr_position.y, curr_position.z, 1])
+            # distance = np.sqrt((destination.x - curr_position.x)**2 +
+            #                     (destination.y - curr_position.y)**2)
 
             if pygame.mouse.get_pressed()[0] and not handled:
 
@@ -966,6 +969,9 @@ def game_loop(args):
 
                 # world_matrix = world.player.get_transform().get_matrix()
                 # world_matrix = np.array(world_matrix)
+
+                print("RGB Camera Matrix:")
+                pprint(rgb_matrix)
 
                 # depth_camera.listen(lambda image: pixel_to_world(image, weak_dc))
                 depth_camera.listen(lambda image: pixel_to_world(image, weak_dc, weak_agent, screen_pos, K, destination))
@@ -988,27 +994,27 @@ def game_loop(args):
 
             if agent.target_destination:
                 destination = agent.target_destination
-            distance = np.sqrt((destination.x - curr_position.x)**2 +
-                        (destination.y - curr_position.y)**2)
+                distance = np.sqrt((destination.x - curr_position.x)**2 +
+                                   (destination.y - curr_position.y)**2)
 
             world.tick(clock)
             world.render(display)
             pygame.display.flip()
 
-            if agent.done():
-                print("reached destination: ", vehicle_pos)
-                if args.loop:
-                    agent.set_destination(random.choice(spawn_points).location)
-                    world.hud.notification(
-                        "The target has been reached, searching for another target", seconds=4.0)
-                    print("The target has been reached, searching for another target")
-                else:
-                    print("The target has been reached, stopping the simulation")
-                    break
+            # if agent.done():
+            #     print("reached destination: ", vehicle_pos)
+            #     if args.loop:
+            #         agent.set_destination(random.choice(spawn_points).location)
+            #         world.hud.notification(
+            #             "The target has been reached, searching for another target", seconds=4.0)
+            #         print("The target has been reached, searching for another target")
+            #     else:
+            #         print("The target has been reached, stopping the simulation")
+            #         break
 
             control = agent.run_step()
             control.manual_gear_shift = False
-            # world.player.apply_control(control)
+            world.player.apply_control(control)
 
     finally:
 
