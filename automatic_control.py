@@ -613,7 +613,7 @@ class CameraManager(object):
         attachment = carla.AttachmentType
         self._camera_transforms = [
             (carla.Transform(
-                carla.Location(x=-0.5, y=0, z=2), carla.Rotation(pitch=0.0)), attachment.Rigid),
+                carla.Location(x=-0.5, y=0, z=30), carla.Rotation(pitch=-80.0)), attachment.Rigid),
             (carla.Transform(
                 carla.Location(x=1.6, z=1.7)), attachment.Rigid),
             (carla.Transform(
@@ -641,6 +641,8 @@ class CameraManager(object):
             if item[0].startswith('sensor.camera'):
                 blp.set_attribute('image_size_x', str(hud.dim[0]))
                 blp.set_attribute('image_size_y', str(hud.dim[1]))
+                if "rgb" in item[0]:
+                    blp.set_attribute('fov', '150')
             elif item[0].startswith('sensor.lidar'):
                 blp.set_attribute('range', '50')
             item.append(blp)
@@ -1025,7 +1027,7 @@ def main():
         '-b', '--behavior', type=str,
         choices=["cautious", "normal", "aggressive"],
         help='Choose one of the possible agent behaviors (default: normal) ',
-        default='aggressive')
+        default='normal')
     argparser.add_argument(
         '-s', '--seed',
         help='Set seed for repeating executions (default: None)',
