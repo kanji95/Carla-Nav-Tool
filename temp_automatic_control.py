@@ -125,7 +125,7 @@ class World(object):
         self._actor_filter = args.filter
         self.restart(args)
         self.world.on_tick(hud.on_world_tick)
-        self.recording_enabled = False
+        self.recording_enabled = True
         self.recording_start = 0
 
     def restart(self, args):
@@ -235,6 +235,7 @@ class KeyboardControl(object):
         world.hud.notification("Press 'H' or '?' for help.", seconds=4.0)
 
     def parse_events(self):
+        global saving
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 return True
@@ -252,7 +253,7 @@ class KeyboardControl(object):
     def _is_ignore_shortcut(key):
         global saving
         global command_given
-        if key==K_i and command_given:
+        if key==K_i:
             saving=[False]
 
 
@@ -619,7 +620,7 @@ class CameraManager(object):
         self._parent = parent_actor
         print(self._parent)
         self.hud = hud
-        self.recording = False
+        self.recording = True
         bound_y = 0.5 + self._parent.bounding_box.extent.y
         attachment = carla.AttachmentType
         self._camera_transforms = [
@@ -706,6 +707,9 @@ class CameraManager(object):
 
     @staticmethod
     def _parse_image(weak_self, image):
+        global command_given
+        global episode_number
+        global saving
         self = weak_self()
         if not self:
             return
@@ -730,8 +734,9 @@ class CameraManager(object):
             array = array[:, :, :3]
             array = array[:, :, ::-1]
             self.surface = pygame.surfarray.make_surface(array.swapaxes(0, 1))
-        if self.recording:
-            image.save_to_disk('_out/%08d' % image.frame)
+        if self.recording and command_given and saving[0]:
+            os.makedirs(f'_out/{episode_number}',exist_ok=True)
+            image.save_to_disk(f'_out/{episode_number}/{image.frame:08d}' )
 
 def pixel_to_world(image, weak_ref, weak_agent, screen_pos, K, destination, set_destination=True, dest_out=None):
     dc_weak = weak_ref()
@@ -963,28 +968,35 @@ def game_loop(args):
 
             curr_position = agent._vehicle.get_transform().location
 
-
             if pygame.mouse.get_pressed()[0] and not handled:
-                if not command_given:
-                    command_given=True
-                    screen_pos = pygame.mouse.get_pos()
+                # if not command_given:
+                if saving[0] and episode_number%2==0:
+                    # command='asdf'
+                    os.makedirs(f'_out/{episode_number}',exist_ok=True)
+                    command=input('Enter Command: ')
+                    with open(f'_out/{episode_number}/command.txt','w') as f:
+                        f.write(command)
 
-                    # Listening to Depth Sensor Data
-                    weak_dc = weakref.ref(depth_camera)
-                    weak_agent = weakref.ref(agent)
+                command_given=True
 
-                    print("RGB Camera Matrix:")
-                    pprint(rgb_matrix)
+                screen_pos = pygame.mouse.get_pos()
+
+                # Listening to Depth Sensor Data
+                weak_dc = weakref.ref(depth_camera)
+                weak_agent = weakref.ref(agent)
+
+                print("RGB Camera Matrix:")
+                pprint(rgb_matrix)
 
 
-                    depth_camera.listen(lambda image: pixel_to_world(image, weak_dc, weak_agent, screen_pos, K, destination,set_destination=True,dest_out=dest_out))
+                depth_camera.listen(lambda image: pixel_to_world(image, weak_dc, weak_agent, screen_pos, K, destination,set_destination=True,dest_out=dest_out))
 
 
-                    pygame.draw.circle(display, (0,255,0), screen_pos, 10)
-                    pygame.display.flip()
+                pygame.draw.circle(display, (0,255,0), screen_pos, 10)
+                pygame.display.flip()
                     
-                else:
-                    print('In route')
+                # else:
+                #     print('In route')
 
             # if command_given:
             #     dest = dest_out[0]
@@ -1003,6 +1015,8 @@ def game_loop(args):
                 print('Done')
 
                 episode_number+=1
+                if episode_number%2==1:
+                    saving=[True]
 
 
 
@@ -1126,4 +1140,13 @@ def main():
 
 
 if __name__ == '__main__':
+    global command_given
+    global saving
+    global episode_number
+
+
+    command_given=False
+    saving=[True]
+    episode_number = 0
+
     main()
