@@ -737,18 +737,18 @@ class CameraManager(object):
             array = array[:, :, ::-1]
             self.surface = pygame.surfarray.make_surface(array.swapaxes(0, 1))
         if self.recording and command_given and saving[0]:
-            os.makedirs(f'_out/{episode_number}',exist_ok=True)
-            image.save_to_disk(f'_out/{episode_number}/{image.frame:08d}' )
+            os.makedirs(f'_xyz_out/{episode_number}',exist_ok=True)
+            image.save_to_disk(f'_xyz_out/{episode_number}/{image.frame:08d}' )
 
-            with open(f'_out/{episode_number}/vehicle_positions.txt','a+') as f:
-                f.write(f'{agent._vehicle.get_transform().location.x},{agent._vehicle.get_transform().location.y},{agent._vehicle.get_transform().location.z}\n')
+            with open(f'_xyz_out/{episode_number}/vehicle_positions.txt','a+') as f:
+                f.write(agent._vehicle.get_transform().location)
 
 
 def pixel_to_world(image, weak_ref, weak_agent, screen_pos, K, destination, set_destination=True, dest_out=None):
     dc_weak = weak_ref()
     agent_weak = weak_agent()
 
-    # image.save_to_disk('_out/%06d.jpg' % image.frame)
+    # image.save_to_disk('_xyz_out/%06d.jpg' % image.frame)
     
     # image.convert(cc.Depth)
     array = np.frombuffer(image.raw_data, dtype=np.dtype("uint8"))
@@ -930,7 +930,7 @@ def game_loop(args):
 
         print("Intinsic Matrix:\n", K)
 
-        temp_dir = "./_out"
+        temp_dir = ".\\_xyz_out"
 
         handled = False
 
@@ -979,36 +979,42 @@ def game_loop(args):
                 # if not command_given:
                 if saving[0] and episode_number%2==0:
                     # command='asdf'
-                    os.makedirs(f'_out/{episode_number}',exist_ok=True)
+                    os.makedirs(f'_xyz_out/{episode_number}',exist_ok=True)
                     command=input('Enter Command: ')
-                    with open(f'_out/{episode_number}/command.txt','w') as f:
+                    with open(f'_xyz_out/{episode_number}/command.txt','w') as f:
                         f.write(command)
-                    np.save(f'_out/{episode_number}/camera_intrinsic.npy',K)
+                    with open(f'_xyz_out/{episode_number}/camera_intrinsic.npy','w') as f:
+                        np.save(f,K)
+                    x = input('X coord:')
+                    y = input('Y coord:')
+                    z = input('Z coord:')
+                    agent.set_destination(carla.Location(x=x, y=y,z=z))
+
 
                 command_given=True
 
-                screen_pos = pygame.mouse.get_pos()
+                # screen_pos = pygame.mouse.get_pos()
 
-                # Listening to Depth Sensor Data
-                weak_dc = weakref.ref(depth_camera)
-                weak_agent = weakref.ref(agent)
+                # # Listening to Depth Sensor Data
+                # weak_dc = weakref.ref(depth_camera)
+                # weak_agent = weakref.ref(agent)
 
-                print("RGB Camera Matrix:")
-                pprint(rgb_matrix)
+                # print("RGB Camera Matrix:")
+                # pprint(rgb_matrix)
 
 
-                depth_camera.listen(lambda image: pixel_to_world(image, weak_dc, weak_agent, screen_pos, K, destination,set_destination=True,dest_out=dest_out))
+                # # depth_camera.listen(lambda image: pixel_to_world(image, weak_dc, weak_agent, screen_pos, K, destination,set_destination=True,dest_out=dest_out))
 
-                dest = dest_out[0]
+                # dest = dest_out[0]
 
-                dtemp = dest
-                dtemp.z += 1
-                # debug.draw_arrow(destination, dtemp, color = carla.Color(0, 255, 0), life_time=1)
+                # dtemp = dest
+                # dtemp.z += 1
+                # # debug.draw_arrow(destination, dtemp, color = carla.Color(0, 255, 0), life_time=1)
                 # debug.draw_point(dest, size=1, color = carla.Color(0, 255, 0),life_time=0.1)
 
 
-                pygame.draw.circle(display, (0,255,0), screen_pos, 10)
-                pygame.display.flip()
+                # pygame.draw.circle(display, (0,255,0), screen_pos, 10)
+                # pygame.display.flip()
                     
                 # else:
                 #     print('In route')
