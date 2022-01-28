@@ -15,7 +15,7 @@ def world_to_image(K, world_points, image_height, image_width):
     K[1][2] = image_width / 2
     image_points = K @ world_points
     image_points = np.true_divide(image_points[0:2, :], image_points[[-1], :])
-    return image_points
+    return image_points[(image_points[:, 0] <= image_height) & (image_points[:,0] > 0) & (image_points[:, 1] <= image_width) & (image_points[:,1] > 0), :]
 
 def annotate(args):
     os.makedirs(args.out_dir,exist_ok=True)
