@@ -743,6 +743,36 @@ class CameraManager(object):
             with open(f'_out/{episode_number}/vehicle_positions.txt','a+') as f:
                 f.write(f'{agent._vehicle.get_transform().location.x},{agent._vehicle.get_transform().location.y},{agent._vehicle.get_transform().location.z}\n')
 
+# K is a (3 x 3) matrix
+# world_points is a (4 x m) matrix,
+# where is the number of world points
+# returns a (2 x m) matrix
+def world_to_image(K, weak_ref, world_points):
+    dc_weak = weak_ref()
+    
+    # This (4, 4) matrix transforms the points from world to sensor coordinates.
+    world_2_camera = np.array(dc_weak.get_transform().get_inverse_matrix())
+
+    # Transform the points from world space to camera space.
+    sensor_points = np.dot(world_2_camera, world_points)
+
+    sensor_points = np.true_divide(sensor_points[0:3, :], sensor_points[[-1], :])
+
+    # (x, y ,z) -> (y, -z, x)
+    point_in_camera_coords = np.array([
+        sensor_points[1],
+        sensor_points[2] * -1,
+        sensor_points[0]
+    ])
+
+    # Finally we can use our K matrix to do the actual 3D -> 2D.
+    points_2d = np.dot(K, point_in_camera_coords)
+
+    # Remember to normalize the x, y values by the 3rd value.
+    points_2d = np.array([points_2d[0, :] / points_2d[2, :],points_2d[1, :] / points_2d[2, :]])
+
+    return points_2d
+
 
 def pixel_to_world(image, weak_ref, weak_agent, screen_pos, K, destination, set_destination=True, dest_out=None):
     dc_weak = weak_ref()

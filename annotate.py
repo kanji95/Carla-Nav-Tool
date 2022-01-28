@@ -14,8 +14,8 @@ from pprint import pprint
 # returns a (2 x m) matrix
 def world_to_image(K, world_points, image_height, image_width):
     print(image_height,image_width)
-    K[0][2] = image_height / 2
-    K[1][2] = image_width / 2
+    K[0][2] = image_width / 2
+    K[1][2] = image_height / 2
     pprint(K)
     image_points = K @ world_points
     image_points = np.true_divide(image_points[0:2, :], image_points[[-1], :])
