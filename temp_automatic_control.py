@@ -254,7 +254,7 @@ class KeyboardControl(object):
         global saving
         global command_given
         if key==K_i:
-            saving=[False]
+            saving=[False,True]
 
 
 
@@ -978,7 +978,7 @@ def game_loop(args):
 
         dest_out = [destination]
         command_given=False
-        saving=[True]
+        saving=[True,True]
         episode_number = 0
 
         sensor_idx = 0
@@ -1017,8 +1017,8 @@ def game_loop(args):
             if pygame.mouse.get_pressed()[0] and not handled:
                 # if not command_given:
                 if saving[0]:
-                    if saving[1] is False:
-                        episode_number+=1
+                    # if saving[1] is False:
+                    episode_number+=1
                     # command='asdf'
                     os.makedirs(f'_out/{episode_number}',exist_ok=True)
                     command=input('Enter Command: ')

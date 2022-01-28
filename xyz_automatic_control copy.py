@@ -983,8 +983,7 @@ def game_loop(args):
                     command=input('Enter Command: ')
                     with open(f'_xyz_out/{episode_number}/command.txt','w') as f:
                         f.write(command)
-                    with open(f'_xyz_out/{episode_number}/camera_intrinsic.npy','w') as f:
-                        np.save(f,K)
+                    np.save(f'_xyz_out/{episode_number}/camera_intrinsic.npy',K)
                     x = input('X coord:')
                     y = input('Y coord:')
                     z = input('Z coord:')
