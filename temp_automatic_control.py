@@ -711,6 +711,7 @@ class CameraManager(object):
         global episode_number
         global saving
         global agent
+        global depth_camera
 
         self = weak_self()
         if not self:
@@ -738,10 +739,13 @@ class CameraManager(object):
             self.surface = pygame.surfarray.make_surface(array.swapaxes(0, 1))
         if self.recording and command_given and saving[0]:
             os.makedirs(f'_out/{episode_number}',exist_ok=True)
-            image.save_to_disk(f'_out/{episode_number}/{image.frame:08d}' )
-
+            os.makedirs(f'_out/{episode_number}/images',exist_ok=True)
+            os.makedirs(f'_out/{episode_number}/inverse_matrix',exist_ok=True)
+            image.save_to_disk(f'_out/{episode_number}/images/{image.frame:08d}' )
+            np.save(f'_out/{episode_number}/inverse_matrix/{image.frame:08d}.npy',np.array(depth_camera.get_transform().get_inverse_matrix()))
             with open(f'_out/{episode_number}/vehicle_positions.txt','a+') as f:
                 f.write(f'{agent._vehicle.get_transform().location.x},{agent._vehicle.get_transform().location.y},{agent._vehicle.get_transform().location.z}\n')
+            
 
 # K is a (3 x 3) matrix
 # world_points is a (4 x m) matrix,
@@ -775,6 +779,8 @@ def world_to_image(K, weak_ref, world_points):
 
 
 def pixel_to_world(image, weak_ref, weak_agent, screen_pos, K, destination, set_destination=True, dest_out=None):
+    global command_given
+
     dc_weak = weak_ref()
     agent_weak = weak_agent()
 
@@ -849,6 +855,8 @@ def pixel_to_world(image, weak_ref, weak_agent, screen_pos, K, destination, set_
     if dest_out is not None:
         dest_out[0] = (new_destination)
         print(dest_out)
+    command_given=True
+
     print("=======================================")
     print(f"old destination : {destination}")
     print(f"new destination : {new_destination}")
@@ -873,6 +881,7 @@ def game_loop(args):
     global command_given
     global episode_number
     global agent
+    global depth_camera
 
     pygame.init()
     pygame.font.init()
@@ -1007,7 +1016,9 @@ def game_loop(args):
 
             if pygame.mouse.get_pressed()[0] and not handled:
                 # if not command_given:
-                if saving[0] and episode_number%2==0:
+                if saving[0]:
+                    if saving[1] is False:
+                        episode_number+=1
                     # command='asdf'
                     os.makedirs(f'_out/{episode_number}',exist_ok=True)
                     command=input('Enter Command: ')
@@ -1015,7 +1026,6 @@ def game_loop(args):
                         f.write(command)
                     np.save(f'_out/{episode_number}/camera_intrinsic.npy',K)
 
-                command_given=True
 
                 screen_pos = pygame.mouse.get_pos()
 
@@ -1059,9 +1069,7 @@ def game_loop(args):
                 command_given=False
                 print('Done')
 
-                episode_number+=1
-                if episode_number%2==1:
-                    saving=[True]
+                saving=[True, True]
 
 
 
@@ -1189,6 +1197,7 @@ if __name__ == '__main__':
     global saving
     global episode_number
     global agent
+    global depth_camera
 
 
     command_given=False

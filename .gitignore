@@ -1,3 +1,4 @@
 .vscode
 rrc
-_out
+_out/*
+_annotated_out/*
