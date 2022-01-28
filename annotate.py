@@ -5,17 +5,22 @@ import argparse
 import os
 import sys
 import shutil
+from pprint import pprint
+
 
 # K is a (3 x 3) matrix
 # world_points is a (3 x m) matrix,
 # where is the number of world points
 # returns a (2 x m) matrix
 def world_to_image(K, world_points, image_height, image_width):
+    print(image_height,image_width)
     K[0][2] = image_height / 2
     K[1][2] = image_width / 2
+    pprint(K)
     image_points = K @ world_points
     image_points = np.true_divide(image_points[0:2, :], image_points[[-1], :])
-    return image_points[(image_points[:, 0] <= image_height) & (image_points[:,0] > 0) & (image_points[:, 1] <= image_width) & (image_points[:,1] > 0), :]
+    # return image_points[(image_points[:, 0] <= image_height) & (image_points[:,0] > 0) & (image_points[:, 1] <= image_width) & (image_points[:,1] > 0), :]
+    return image_points
 
 def annotate(args):
     os.makedirs(args.out_dir,exist_ok=True)
@@ -32,11 +37,16 @@ def annotate(args):
         float_coordinates = np.array([[float(x.strip()) for x in last_coordinate.split(',')] for last_coordinate in coordinates])
         target_coordinate = float_coordinates[-1]
 
+        print(float_coordinates.shape)
+        print(target_coordinate.shape)
+
         relative_coords = target_coordinate - float_coordinates
+        print(relative_coords)
 
         K = np.load(os.path.join(args.dir,episode,'camera_intrinsic.npy'))
 
         annotations = world_to_image(K,relative_coords.T,args.height,args.width).T
+        print(annotations.shape)
 
         frames = sorted(os.listdir(os.path.join(args.dir,episode)))
 
