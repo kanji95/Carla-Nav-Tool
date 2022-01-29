@@ -1027,8 +1027,8 @@ def game_loop(args):
                         saving[1] = False
                         episode_number += 1
                         os.makedirs(f'_out/{episode_number}', exist_ok=True)
-                        # command = input('Enter Command: ')
-                        command = 'a'
+                        command = input('Enter Command: ')
+                        # command = 'a'
                         with open(f'_out/{episode_number}/command.txt', 'w') as f:
                             f.write(command)
                         np.save(
