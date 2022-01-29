@@ -1,1 +1,4 @@
 .vscode
+_out/*
+_xyz_out/*
+_annotated_out/*
