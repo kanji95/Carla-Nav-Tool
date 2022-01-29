@@ -11,6 +11,7 @@
 # CarlaUE4.exe -windowed -carla-server -quality-level=Low
 
 from __future__ import print_function
+import shutil
 from agents.navigation.basic_agent import BasicAgent  # pylint: disable=import-error
 from agents.navigation.behavior_agent import BehaviorAgent  # pylint: disable=import-error
 from carla import ColorConverter as cc
@@ -726,6 +727,28 @@ class CameraManager(object):
             image.save_to_disk('_out/%08d' % image.frame)
 
 
+def world_to_pixel(world, destination, K, curr_position):
+    rgb_camera = world.camera_manager.sensor
+    rgb_matrix = rgb_camera.get_transform().get_inverse_matrix()[:3]
+
+    point_3d = np.array([destination.x, destination.y, curr_position.z, 1])
+    point_3d = np.round(point_3d, decimals=2)
+    # print("3D world coordinate: ", point_3d)
+
+    cam_coords = rgb_matrix @ point_3d[:, None]
+    cam_coords = np.array([cam_coords[1], cam_coords[2]*-1, cam_coords[0]])
+    points_2d = np.dot(K, cam_coords)
+
+    points_2d = np.array([
+        points_2d[0, :] / points_2d[2, :],
+        points_2d[1, :] / points_2d[2, :],
+        points_2d[2, :]]
+    )
+    points_2d = points_2d.reshape(-1)
+    points_2d = np.round(points_2d, decimals=2)
+    return points_2d
+
+
 def pixel_to_world(image, weak_ref, weak_agent, screen_pos, K, destination):
     dc_weak = weak_ref()
     agent_weak = weak_agent()
@@ -905,7 +928,7 @@ def game_loop(args):
         handled = False
 
         for file_ in os.listdir(temp_dir):
-            os.remove(os.path.join(temp_dir, file_))
+            shutil.rmtree(os.path.join(temp_dir, file_))
 
         checked = False
         while True:
@@ -950,7 +973,6 @@ def game_loop(args):
 
                 world.tick(clock)
                 world.render(display)
-                pprint(points_2d)
                 for point in points_2d:
                     pygame.draw.circle(display, (0, 255, 0),
                                        (point[0], point[1]), 10)
@@ -988,28 +1010,6 @@ def game_loop(args):
             world.destroy()
 
         pygame.quit()
-
-
-def world_to_pixel(world, destination, K, curr_position):
-    rgb_camera = world.camera_manager.sensor
-    rgb_matrix = rgb_camera.get_transform().get_inverse_matrix()[:3]
-
-    point_3d = np.array([destination.x, destination.y, curr_position.z, 1])
-    point_3d = np.round(point_3d, decimals=2)
-    # print("3D world coordinate: ", point_3d)
-
-    cam_coords = rgb_matrix @ point_3d[:, None]
-    cam_coords = np.array([cam_coords[1], cam_coords[2]*-1, cam_coords[0]])
-    points_2d = np.dot(K, cam_coords)
-
-    points_2d = np.array([
-        points_2d[0, :] / points_2d[2, :],
-        points_2d[1, :] / points_2d[2, :],
-        points_2d[2, :]]
-    )
-    points_2d = points_2d.reshape(-1)
-    points_2d = np.round(points_2d, decimals=2)
-    return points_2d
 
 
 # ==============================================================================

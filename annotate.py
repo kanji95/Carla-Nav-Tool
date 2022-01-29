@@ -85,7 +85,7 @@ def annotate(args):
             mesh = np.hstack([mesh, np.zeros((mesh.shape[0], 1))]).T
 
             annotations = world_to_pixel(
-                K, inverse_matrix[:, 3], target_coordinates[i].reshape(3, 1)+mesh, float_coordinates[i]).T
+                K, inverse_matrix, target_coordinates[i].reshape(3, 1)+mesh, float_coordinates[i]).T
 
             for i in range(annotations.shape[0]):
                 x = round(annotations[i, 0])
