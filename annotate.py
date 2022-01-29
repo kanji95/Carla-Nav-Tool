@@ -49,13 +49,13 @@ def annotate(args):
             coordinates = f.readlines()
         float_coordinates = np.array([[float(x.strip()) for x in last_coordinate.split(
             ',')] for last_coordinate in coordinates])
-        target_coordinate = float_coordinates[-1]
+        with open(os.path.join(args.dir, episode, 'target_positions.txt')) as f:
+            coordinates = f.readlines()
+        target_coordinates = np.array([[float(x.strip()) for x in last_coordinate.split(
+            ',')] for last_coordinate in coordinates])
+        target_coordinates[:-3] = target_coordinates[3:]
 
         print(float_coordinates.shape)
-        print(target_coordinate.shape)
-
-        relative_coords = target_coordinate - float_coordinates
-        print(relative_coords)
 
         K = np.load(os.path.join(args.dir, episode, 'camera_intrinsic.npy'))
 
@@ -85,9 +85,13 @@ def annotate(args):
             mesh = np.hstack([mesh, np.zeros((mesh.shape[0], 1))]).T
 
             annotations = world_to_pixel(
-                K, inverse_matrix, target_coordinate.reshape(3, 1)+mesh, relative_coords[i]).T
+                K, inverse_matrix, target_coordinates[i].reshape(3, 1)+mesh, float_coordinates[i]).T
 
             for i in range(annotations.shape[0]):
+                x = round(annotations[i, 0])
+                y = round(annotations[i, 1])
+                if x < 0 or x >= args.width or y < 0 or y >= args.height:
+                    continue
                 im = cv2.circle(im, (round(annotations[i, 0]), round(
                     annotations[i, 1])), 3, (0, 255, 0), thickness=-1)
 

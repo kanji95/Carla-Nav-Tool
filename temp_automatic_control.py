@@ -8,9 +8,13 @@
 
 """Example of automatic vehicle control from client side."""
 
-## CarlaUE4.exe -windowed -carla-server -quality-level=Low
+# CarlaUE4.exe -windowed -carla-server -quality-level=Low
 
 from __future__ import print_function
+from agents.navigation.basic_agent import BasicAgent  # pylint: disable=import-error
+from agents.navigation.behavior_agent import BehaviorAgent  # pylint: disable=import-error
+from carla import ColorConverter as cc
+import carla
 
 import argparse
 import collections
@@ -38,6 +42,7 @@ try:
     from pygame.locals import KMOD_CTRL
     from pygame.locals import K_ESCAPE
     from pygame.locals import K_q
+    from pygame import K_d
     from pygame import K_i
 except ImportError:
     raise RuntimeError(
@@ -69,11 +74,6 @@ try:
 except IndexError:
     pass
 
-import carla
-from carla import ColorConverter as cc
-
-from agents.navigation.behavior_agent import BehaviorAgent  # pylint: disable=import-error
-from agents.navigation.basic_agent import BasicAgent  # pylint: disable=import-error
 
 # ==============================================================================
 # -- Global functions ----------------------------------------------------------
@@ -160,8 +160,9 @@ class World(object):
             spawn_points = self.map.get_spawn_points()
             # spawn_point = random.choice(
             #     spawn_points) if spawn_points else carla.Transform()
-            ## Fix Spawning Point
-            spawn_point = spawn_points[0] if spawn_points else carla.Transform()
+            # Fix Spawning Point
+            spawn_point = spawn_points[0] if spawn_points else carla.Transform(
+            )
             self.player = self.world.try_spawn_actor(blueprint, spawn_point)
             self.modify_vehicle_physics(self.player)
 
@@ -243,19 +244,26 @@ class KeyboardControl(object):
                 if self._is_quit_shortcut(event.key):
                     return True
                 self._is_ignore_shortcut(event.key)
+                self._is_episode_done(event.key)
 
     @staticmethod
     def _is_quit_shortcut(key):
         """Shortcut for quitting"""
         return (key == K_ESCAPE) or (key == K_q and pygame.key.get_mods() & KMOD_CTRL)
-    
+
     @staticmethod
     def _is_ignore_shortcut(key):
         global saving
         global command_given
-        if key==K_i:
-            saving=[False,True]
+        if key == K_i:
+            saving = [False, True]
 
+    @staticmethod
+    def _is_episode_done(key):
+        global saving
+        global command_given
+        if key == K_d:
+            saving[1] = True
 
 
 # ==============================================================================
@@ -673,7 +681,8 @@ class CameraManager(object):
             if self.sensor is not None:
                 self.sensor.destroy()
                 self.surface = None
-            print(index, self.transform_index, self._camera_transforms[self.transform_index][0])
+            print(index, self.transform_index,
+                  self._camera_transforms[self.transform_index][0])
             print(self.sensors[index])
             self.sensor = self._parent.get_world().spawn_actor(
                 self.sensors[index][-1],
@@ -738,14 +747,20 @@ class CameraManager(object):
             array = array[:, :, ::-1]
             self.surface = pygame.surfarray.make_surface(array.swapaxes(0, 1))
         if self.recording and command_given and saving[0]:
-            os.makedirs(f'_out/{episode_number}',exist_ok=True)
-            os.makedirs(f'_out/{episode_number}/images',exist_ok=True)
-            os.makedirs(f'_out/{episode_number}/inverse_matrix',exist_ok=True)
-            image.save_to_disk(f'_out/{episode_number}/images/{image.frame:08d}' )
-            np.save(f'_out/{episode_number}/inverse_matrix/{image.frame:08d}.npy',np.array(depth_camera.get_transform().get_inverse_matrix()))
-            with open(f'_out/{episode_number}/vehicle_positions.txt','a+') as f:
-                f.write(f'{agent._vehicle.get_transform().location.x},{agent._vehicle.get_transform().location.y},{agent._vehicle.get_transform().location.z}\n')
-            
+            os.makedirs(f'_out/{episode_number}', exist_ok=True)
+            os.makedirs(f'_out/{episode_number}/images', exist_ok=True)
+            os.makedirs(f'_out/{episode_number}/inverse_matrix', exist_ok=True)
+            image.save_to_disk(
+                f'_out/{episode_number}/images/{image.frame:08d}')
+            np.save(f'_out/{episode_number}/inverse_matrix/{image.frame:08d}.npy',
+                    np.array(depth_camera.get_transform().get_inverse_matrix()))
+            with open(f'_out/{episode_number}/vehicle_positions.txt', 'a+') as f:
+                f.write(
+                    f'{agent._vehicle.get_transform().location.x},{agent._vehicle.get_transform().location.y},{agent._vehicle.get_transform().location.z}\n')
+            with open(f'_out/{episode_number}/target_positions.txt', 'a+') as f:
+                f.write(
+                    f'{agent.target_destination.x},{agent.target_destination.y},{agent.target_destination.z}\n')
+
 
 # K is a (3 x 3) matrix
 # world_points is a (4 x m) matrix,
@@ -753,14 +768,15 @@ class CameraManager(object):
 # returns a (2 x m) matrix
 def world_to_image(K, weak_ref, world_points):
     dc_weak = weak_ref()
-    
+
     # This (4, 4) matrix transforms the points from world to sensor coordinates.
     world_2_camera = np.array(dc_weak.get_transform().get_inverse_matrix())
 
     # Transform the points from world space to camera space.
     sensor_points = np.dot(world_2_camera, world_points)
 
-    sensor_points = np.true_divide(sensor_points[0:3, :], sensor_points[[-1], :])
+    sensor_points = np.true_divide(
+        sensor_points[0:3, :], sensor_points[[-1], :])
 
     # (x, y ,z) -> (y, -z, x)
     point_in_camera_coords = np.array([
@@ -773,7 +789,8 @@ def world_to_image(K, weak_ref, world_points):
     points_2d = np.dot(K, point_in_camera_coords)
 
     # Remember to normalize the x, y values by the 3rd value.
-    points_2d = np.array([points_2d[0, :] / points_2d[2, :],points_2d[1, :] / points_2d[2, :]])
+    points_2d = np.array([points_2d[0, :] / points_2d[2, :],
+                         points_2d[1, :] / points_2d[2, :]])
 
     return points_2d
 
@@ -785,18 +802,18 @@ def pixel_to_world(image, weak_ref, weak_agent, screen_pos, K, destination, set_
     agent_weak = weak_agent()
 
     # image.save_to_disk('_out/%06d.jpg' % image.frame)
-    
+
     # image.convert(cc.Depth)
     array = np.frombuffer(image.raw_data, dtype=np.dtype("uint8"))
     array = np.reshape(array, (image.height, image.width, 4))
     array = array[:, :, :3]
-    im_array = array[:, :, ::-1] #[:, :, 0]
+    im_array = array[:, :, ::-1]  # [:, :, 0]
 
     print(im_array.shape)
 
     depth_cam_matrix = dc_weak.get_transform().get_matrix()
     depth_cam_matrix_inv = dc_weak.get_transform().get_inverse_matrix()
-    
+
     depth_cam_matrix = np.round(np.array(depth_cam_matrix), decimals=2)
     depth_cam_matrix_inv = np.round(np.array(depth_cam_matrix_inv), decimals=2)
 
@@ -828,8 +845,8 @@ def pixel_to_world(image, weak_ref, weak_agent, screen_pos, K, destination, set_
     pos_3d__ = np.linalg.inv(K) @ pos_2d[:, None] * depth
     pos_3d__ = pos_3d__.reshape(-1)
     print("Camera Coordinates: ", pos_3d__)
-    
-    ## Order Change
+
+    # Order Change
     pos_3d_ = np.array([pos_3d__[2], pos_3d__[0], pos_3d__[1]])
     print("After Camera Coordinates: ", pos_3d_)
 
@@ -847,7 +864,8 @@ def pixel_to_world(image, weak_ref, weak_agent, screen_pos, K, destination, set_
     xyz_pos = depth_cam_matrix @ xyz_pos_[:, None]
     xyz_pos = xyz_pos.reshape(-1)
 
-    new_destination = carla.Location(x=pos_3d_[0], y=pos_3d_[1], z=destination.z)
+    new_destination = carla.Location(
+        x=pos_3d_[0], y=pos_3d_[1], z=destination.z)
 
     if set_destination:
         # agent_weak.set_destination(new_destination, start_location=agent_weak._vehicle.get_transform().location)
@@ -855,7 +873,7 @@ def pixel_to_world(image, weak_ref, weak_agent, screen_pos, K, destination, set_
     if dest_out is not None:
         dest_out[0] = (new_destination)
         print(dest_out)
-    command_given=True
+    command_given = True
 
     print("=======================================")
     print(f"old destination : {destination}")
@@ -922,12 +940,11 @@ def game_loop(args):
         else:
             agent = BehaviorAgent(world.player, behavior=args.behavior)
 
-        ## Ignore Rules
+        # Ignore Rules
         agent.ignore_traffic_lights(True)
         agent.ignore_stop_signs(True)
         # agent.follow_speed_limits(True)
         # agent.set_target_speed(10)
-
 
         # Set the agent destination
         spawn_points = world.map.get_spawn_points()
@@ -938,8 +955,6 @@ def game_loop(args):
 
         print(f"Destination is {destination}!")
 
-
-
         clock = pygame.time.Clock()
 
         camera_manager = world.camera_manager
@@ -948,14 +963,14 @@ def game_loop(args):
         rgb_matrix = np.array(rgb_matrix)
         rgb_matrix = np.round(rgb_matrix, decimals=2)
 
-        ## Getting the Depth Sensor
+        # Getting the Depth Sensor
         depth_sensor_info = world.camera_manager.sensors[2]
         depth_camera = world.player.get_world().spawn_actor(
-                depth_sensor_info[-1],
-                camera_manager._camera_transforms[0][0],
-                attach_to=world.player,
-                attachment_type=camera_manager._camera_transforms[0][1])
-        
+            depth_sensor_info[-1],
+            camera_manager._camera_transforms[0][0],
+            attach_to=world.player,
+            attachment_type=camera_manager._camera_transforms[0][1])
+
         image_w = args.width
         image_h = args.height
         fov = camera_bp.get_attribute("fov").as_float()
@@ -977,8 +992,8 @@ def game_loop(args):
             os.remove(os.path.join(temp_dir, file_))
 
         dest_out = [destination]
-        command_given=False
-        saving=[True,True]
+        command_given = False
+        saving = [True, True]
         episode_number = 0
 
         sensor_idx = 0
@@ -1017,15 +1032,16 @@ def game_loop(args):
             if pygame.mouse.get_pressed()[0] and not handled:
                 # if not command_given:
                 if saving[0]:
-                    # if saving[1] is False:
-                    episode_number+=1
-                    # command='asdf'
-                    os.makedirs(f'_out/{episode_number}',exist_ok=True)
-                    command=input('Enter Command: ')
-                    with open(f'_out/{episode_number}/command.txt','w') as f:
-                        f.write(command)
-                    np.save(f'_out/{episode_number}/camera_intrinsic.npy',K)
-
+                    if saving[1]:
+                        saving[1] = False
+                        episode_number += 1
+                        os.makedirs(f'_out/{episode_number}', exist_ok=True)
+                        command = input('Enter Command: ')
+                        with open(f'_out/{episode_number}/command.txt', 'w') as f:
+                            f.write(command)
+                        np.save(
+                            f'_out/{episode_number}/camera_intrinsic.npy', K)
+                    # episode_number = -episode_number
 
                 screen_pos = pygame.mouse.get_pos()
 
@@ -1036,8 +1052,8 @@ def game_loop(args):
                 print("RGB Camera Matrix:")
                 pprint(rgb_matrix)
 
-
-                depth_camera.listen(lambda image: pixel_to_world(image, weak_dc, weak_agent, screen_pos, K, destination,set_destination=True,dest_out=dest_out))
+                depth_camera.listen(lambda image: pixel_to_world(
+                    image, weak_dc, weak_agent, screen_pos, K, destination, set_destination=True, dest_out=dest_out))
 
                 dest = dest_out[0]
 
@@ -1046,10 +1062,9 @@ def game_loop(args):
                 # debug.draw_arrow(destination, dtemp, color = carla.Color(0, 255, 0), life_time=1)
                 # debug.draw_point(dest, size=1, color = carla.Color(0, 255, 0),life_time=0.1)
 
-
-                pygame.draw.circle(display, (0,255,0), screen_pos, 10)
+                pygame.draw.circle(display, (0, 255, 0), screen_pos, 10)
                 pygame.display.flip()
-                    
+
                 # else:
                 #     print('In route')
 
@@ -1061,17 +1076,13 @@ def game_loop(args):
             #     # debug.draw_arrow(destination, dtemp, color = carla.Color(0, 255, 0), life_time=1)
             #     debug.draw_point(dest, size=1, color = carla.Color(0, 255, 0))
 
-
-
             handled = pygame.mouse.get_pressed()[0]
 
             if agent.done() and command_given:
-                command_given=False
+                command_given = False
                 print('Done')
 
-                saving=[True, True]
-
-
+                saving = [True, False]
 
             if agent.target_destination:
                 destination = agent.target_destination
@@ -1199,9 +1210,8 @@ if __name__ == '__main__':
     global agent
     global depth_camera
 
-
-    command_given=False
-    saving=[True]
+    command_given = False
+    saving = [True]
     episode_number = 0
 
     main()
