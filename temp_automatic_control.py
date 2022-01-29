@@ -44,6 +44,7 @@ try:
     from pygame.locals import K_ESCAPE
     from pygame.locals import K_q
     from pygame import K_d
+    from pygame import K_z
     from pygame import K_i
 except ImportError:
     raise RuntimeError(
@@ -245,7 +246,8 @@ class KeyboardControl(object):
                 if self._is_quit_shortcut(event.key):
                     return True
                 self._is_ignore_shortcut(event.key)
-                self._is_episode_done(event.key)
+                self._is_next_episode_shortcut(event.key)
+                self._is_delete_episode_shortcut(event.key)
 
     @staticmethod
     def _is_quit_shortcut(key):
@@ -257,14 +259,22 @@ class KeyboardControl(object):
         global saving
         global command_given
         if key == K_i:
-            saving = [False, True]
+            saving = [False, True, False]
 
     @staticmethod
-    def _is_episode_done(key):
+    def _is_next_episode_shortcut(key):
         global saving
         global command_given
         if key == K_d:
             saving[1] = True
+
+    @staticmethod
+    def _is_delete_episode_shortcut(key):
+        global saving
+        global command_given
+        if key == K_z:
+            saving[1] = True
+            saving[2] = True
 
 
 # ==============================================================================
@@ -662,6 +672,8 @@ class CameraManager(object):
             if item[0].startswith('sensor.camera'):
                 blp.set_attribute('image_size_x', str(hud.dim[0]))
                 blp.set_attribute('image_size_y', str(hud.dim[1]))
+                # if "rgb" in item[0]:
+                #     blp.set_attribute('fov', '150')
             elif item[0].startswith('sensor.lidar'):
                 blp.set_attribute('range', '50')
             item.append(blp)
@@ -751,8 +763,15 @@ class CameraManager(object):
             os.makedirs(f'_out/{episode_number}', exist_ok=True)
             os.makedirs(f'_out/{episode_number}/images', exist_ok=True)
             os.makedirs(f'_out/{episode_number}/inverse_matrix', exist_ok=True)
-            image.save_to_disk(
-                f'_out/{episode_number}/images/{image.frame:08d}')
+
+            img = np.frombuffer(image.raw_data, dtype=np.dtype("uint8"))
+            img = np.reshape(
+                img, (image.height, image.width, 4))  # RGBA format
+            img = img[:, :, :]  # BGR
+            cv2.imwrite(
+                f'_out/{episode_number}/images/{image.frame:08d}.png', img)
+            # image.save_to_disk(
+            #     f'_out/{episode_number}/images/{image.frame:08d}')
             np.save(f'_out/{episode_number}/inverse_matrix/{image.frame:08d}.npy',
                     np.array(depth_camera.get_transform().get_inverse_matrix()))
             with open(f'_out/{episode_number}/vehicle_positions.txt', 'a+') as f:
@@ -763,16 +782,19 @@ class CameraManager(object):
                     f'{agent.target_destination.x},{agent.target_destination.y},{agent.target_destination.z}\n')
 
 
-def world_to_pixel(world, destination, K,  curr_position):
+def world_to_pixel(K, rgb_matrix, destination,  curr_position):
 
-    rgb_camera = world.camera_manager.sensor
-    rgb_matrix = rgb_camera.get_transform().get_inverse_matrix()[:3]
+    point_3d = np.ones((4, destination.shape[1]))
+    point_3d[0] = destination[0]
+    point_3d[1] = destination[1]
+    point_3d[2] = curr_position[2]
 
-    point_3d = np.array([destination[0], destination[1], curr_position[2], 1])
+    # point_3d = np.array([destination[0], destination[1], curr_position[2], 1])
     point_3d = np.round(point_3d, decimals=2)
     # print("3D world coordinate: ", point_3d)
 
-    cam_coords = rgb_matrix @ point_3d[:, None]
+    cam_coords = rgb_matrix @ point_3d
+    # cam_coords = rgb_matrix @ point_3d[:, None]
     cam_coords = np.array([cam_coords[1], cam_coords[2]*-1, cam_coords[0]])
     points_2d = np.dot(K, cam_coords)
 
@@ -781,7 +803,7 @@ def world_to_pixel(world, destination, K,  curr_position):
         points_2d[1, :] / points_2d[2, :],
         points_2d[2, :]]
     )
-    points_2d = points_2d.reshape(-1)
+    points_2d = points_2d.reshape(3, -1)
     points_2d = np.round(points_2d, decimals=2)
     return points_2d
 
@@ -978,7 +1000,8 @@ def game_loop(args):
             shutil.rmtree(os.path.join(temp_dir, file_))
 
         command_given = False
-        saving = [True, True]
+        # currently saving, need to start next episode, delete current episode
+        saving = [True, True, False]
         episode_number = 0
         checked = False
 
@@ -992,6 +1015,10 @@ def game_loop(args):
                 return
 
             curr_position = agent._vehicle.get_transform().location
+
+            if saving[2]:
+                shutil.rmtree(f'_out/{episode_number}')
+                saving[2] = False
 
             if pygame.mouse.get_pressed()[0] and not handled:
                 # if not command_given:
@@ -1026,53 +1053,46 @@ def game_loop(args):
                 command_given = False
                 print('Done')
 
-                saving = [True, False]
+                saving = [True, False, False]
 
             if agent.target_destination:
                 destination = agent.target_destination
                 distance = np.sqrt((destination.x - curr_position.x)**2 +
                                    (destination.y - curr_position.y)**2)
-                # points_2d = []
 
-                # x_offsets = np.linspace(-2, 2, num=150)
-                # y_offsets = np.linspace(-2, 2, num=150)
-                # X, Y = np.meshgrid(x_offsets, y_offsets)
+                points_2d = []
 
-                # mesh = np.dstack([X, Y])
+                x_offsets = np.linspace(-0.5, 0.5, num=25)
+                y_offsets = np.linspace(-0.5, 0.5, num=25)
+                X, Y = np.meshgrid(x_offsets, y_offsets)
 
-                # mesh = mesh.reshape(-1, 2)
+                mesh = np.dstack([X, Y])
 
-                # mesh = np.hstack([mesh, np.zeros((mesh.shape[0], 1))]).T
-                # dest = np.array([destination.x, destination.y, destination.z])
+                mesh = mesh.reshape(-1, 2)
 
-                # rgb_camera = world.camera_manager.sensor
-                # rgb_matrix = rgb_camera.get_transform().get_inverse_matrix()[
-                #     :3]
+                mesh = np.hstack([mesh, np.zeros((mesh.shape[0], 1))]).T
+                dest = np.array([destination.x, destination.y, destination.z])
 
-                # curr_position = agent._vehicle.get_transform().location
+                rgb_camera = world.camera_manager.sensor
+                rgb_matrix = rgb_camera.get_transform().get_inverse_matrix()[
+                    :3]
+
+                curr_position = agent._vehicle.get_transform().location
 
                 pos = np.array(
                     [curr_position.x, curr_position.y, curr_position.z])
 
-                points_2d = []
-                for x_offset in np.linspace(-1, 1, num=50):
-                    for y_offset in np.linspace(-1, 1, num=50):
-                        world_point = carla.Location(
-                            x=destination.x+x_offset,
-                            y=destination.y+y_offset,
-                            z=curr_position.z
-                        )
-                        dest = np.array(
-                            [world_point.x, world_point.y, world_point.z])
-                        point_2d = world_to_pixel(
-                            world, dest, K, pos)
+                annotations = world_to_pixel(
+                    K, rgb_matrix, dest.reshape(3, 1)+mesh, pos).T
 
-                        points_2d.append(point_2d)
+                for i in range(annotations.shape[0]):
+                    points_2d.append(annotations[i])
+                    # pprint(annotations[i])
 
                 world.tick(clock)
                 world.render(display)
 
-                for point in points_2d:
+                for point in annotations:
                     pygame.draw.circle(display, (0, 255, 0),
                                        (point[0], point[1]), 10)
                 pygame.display.flip()
@@ -1080,7 +1100,6 @@ def game_loop(args):
                 world.tick(clock)
                 world.render(display)
                 pygame.display.flip()
-
             # world.tick(clock)
             # world.render(display)
             # pygame.display.flip()
@@ -1203,7 +1222,7 @@ if __name__ == '__main__':
     global depth_camera
 
     command_given = False
-    saving = [True]
+    saving = [True, True, False]
     episode_number = 0
 
     main()
