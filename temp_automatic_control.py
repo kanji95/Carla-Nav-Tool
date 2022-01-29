@@ -11,6 +11,7 @@
 # CarlaUE4.exe -windowed -carla-server -quality-level=Low
 
 from __future__ import print_function
+import shutil
 from agents.navigation.basic_agent import BasicAgent  # pylint: disable=import-error
 from agents.navigation.behavior_agent import BehaviorAgent  # pylint: disable=import-error
 from carla import ColorConverter as cc
@@ -633,7 +634,7 @@ class CameraManager(object):
         attachment = carla.AttachmentType
         self._camera_transforms = [
             (carla.Transform(
-                carla.Location(x=-0.5, y=0, z=2), carla.Rotation(pitch=0.0)), attachment.Rigid),
+                carla.Location(x=0, y=0, z=2), carla.Rotation(pitch=0.0)), attachment.Rigid),
             (carla.Transform(
                 carla.Location(x=1.6, z=1.7)), attachment.Rigid),
             (carla.Transform(
@@ -762,36 +763,29 @@ class CameraManager(object):
                     f'{agent.target_destination.x},{agent.target_destination.y},{agent.target_destination.z}\n')
 
 
-# K is a (3 x 3) matrix
-# world_points is a (4 x m) matrix,
-# where is the number of world points
-# returns a (2 x m) matrix
-def world_to_image(K, weak_ref, world_points):
-    dc_weak = weak_ref()
+def world_to_pixel(K, rgb_matrix, destination,  curr_position):
 
-    # This (4, 4) matrix transforms the points from world to sensor coordinates.
-    world_2_camera = np.array(dc_weak.get_transform().get_inverse_matrix())
+    point_3d = np.ones((4, destination.shape[1]))
+    point_3d[0] = destination[0]
+    point_3d[1] = destination[1]
+    point_3d[2] = curr_position[2]
 
-    # Transform the points from world space to camera space.
-    sensor_points = np.dot(world_2_camera, world_points)
+    # point_3d = np.array([destination[0], destination[1], curr_position[2], 1])
+    point_3d = np.round(point_3d, decimals=2)
+    # print("3D world coordinate: ", point_3d)
 
-    sensor_points = np.true_divide(
-        sensor_points[0:3, :], sensor_points[[-1], :])
+    cam_coords = rgb_matrix @ point_3d
+    # cam_coords = rgb_matrix @ point_3d[:, None]
+    cam_coords = np.array([cam_coords[1], cam_coords[2]*-1, cam_coords[0]])
+    points_2d = np.dot(K, cam_coords)
 
-    # (x, y ,z) -> (y, -z, x)
-    point_in_camera_coords = np.array([
-        sensor_points[1],
-        sensor_points[2] * -1,
-        sensor_points[0]
-    ])
-
-    # Finally we can use our K matrix to do the actual 3D -> 2D.
-    points_2d = np.dot(K, point_in_camera_coords)
-
-    # Remember to normalize the x, y values by the 3rd value.
-    points_2d = np.array([points_2d[0, :] / points_2d[2, :],
-                         points_2d[1, :] / points_2d[2, :]])
-
+    points_2d = np.array([
+        points_2d[0, :] / points_2d[2, :],
+        points_2d[1, :] / points_2d[2, :],
+        points_2d[2, :]]
+    )
+    points_2d = points_2d.reshape(3, -1)
+    points_2d = np.round(points_2d, decimals=2)
     return points_2d
 
 
@@ -861,7 +855,7 @@ def pixel_to_world(image, weak_ref, weak_agent, screen_pos, K, destination, set_
     Z = depth
 
     xyz_pos_ = np.array([X, Y, Z, 1])
-    xyz_pos = depth_cam_matrix @ xyz_pos_[:, None]
+    xyz_pos = vehicle_matrix @ depth_cam_matrix @ xyz_pos_[:, None]
     xyz_pos = xyz_pos.reshape(-1)
 
     new_destination = carla.Location(
@@ -874,7 +868,6 @@ def pixel_to_world(image, weak_ref, weak_agent, screen_pos, K, destination, set_
         dest_out[0] = (new_destination)
         print(dest_out)
     command_given = True
-
     print("=======================================")
     print(f"old destination : {destination}")
     print(f"new destination : {new_destination}")
@@ -989,7 +982,7 @@ def game_loop(args):
         handled = False
 
         for file_ in os.listdir(temp_dir):
-            os.remove(os.path.join(temp_dir, file_))
+            shutil.rmtree(os.path.join(temp_dir, file_))
 
         dest_out = [destination]
         command_given = False
@@ -1088,10 +1081,50 @@ def game_loop(args):
                 destination = agent.target_destination
                 distance = np.sqrt((destination.x - curr_position.x)**2 +
                                    (destination.y - curr_position.y)**2)
+                points_2d = []
 
-            world.tick(clock)
-            world.render(display)
-            pygame.display.flip()
+                x_offsets = np.linspace(-2, 2, num=150)
+                y_offsets = np.linspace(-2, 2, num=150)
+                X, Y = np.meshgrid(x_offsets, y_offsets)
+
+                mesh = np.dstack([X, Y])
+
+                mesh = mesh.reshape(-1, 2)
+
+                mesh = np.hstack([mesh, np.zeros((mesh.shape[0], 1))]).T
+                dest = np.array([destination.x, destination.y, destination.z])
+
+                rgb_camera = world.camera_manager.sensor
+                rgb_matrix = rgb_camera.get_transform().get_inverse_matrix()[
+                    :3]
+
+                curr_position = agent._vehicle.get_transform().location
+
+                pos = np.array(
+                    [curr_position.x, curr_position.y, curr_position.z])
+
+                annotations = world_to_pixel(
+                    K, rgb_matrix, dest.reshape(3, 1)+mesh, pos).T
+
+                for i in range(annotations.shape[0]):
+                    points_2d.append(annotations[i])
+                    # pprint(annotations[i])
+
+                world.tick(clock)
+                world.render(display)
+
+                for point in annotations:
+                    pygame.draw.circle(display, (0, 255, 0),
+                                       (point[0], point[1]), 10)
+                pygame.display.flip()
+            else:
+                world.tick(clock)
+                world.render(display)
+                pygame.display.flip()
+
+            # world.tick(clock)
+            # world.render(display)
+            # pygame.display.flip()
 
             # if agent.done():
             #     print("reached destination: ", vehicle_pos)
@@ -1178,7 +1211,7 @@ def main():
         '-b', '--behavior', type=str,
         choices=["cautious", "normal", "aggressive"],
         help='Choose one of the possible agent behaviors (default: normal) ',
-        default='aggressive')
+        default='normal')
     argparser.add_argument(
         '-s', '--seed',
         help='Set seed for repeating executions (default: None)',

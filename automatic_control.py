@@ -8,9 +8,13 @@
 
 """Example of automatic vehicle control from client side."""
 
-## CarlaUE4.exe -windowed -carla-server -quality-level=Low
+# CarlaUE4.exe -windowed -carla-server -quality-level=Low
 
 from __future__ import print_function
+from agents.navigation.basic_agent import BasicAgent  # pylint: disable=import-error
+from agents.navigation.behavior_agent import BehaviorAgent  # pylint: disable=import-error
+from carla import ColorConverter as cc
+import carla
 
 import argparse
 import collections
@@ -68,11 +72,6 @@ try:
 except IndexError:
     pass
 
-import carla
-from carla import ColorConverter as cc
-
-from agents.navigation.behavior_agent import BehaviorAgent  # pylint: disable=import-error
-from agents.navigation.basic_agent import BasicAgent  # pylint: disable=import-error
 
 # ==============================================================================
 # -- Global functions ----------------------------------------------------------
@@ -159,8 +158,9 @@ class World(object):
             spawn_points = self.map.get_spawn_points()
             # spawn_point = random.choice(
             #     spawn_points) if spawn_points else carla.Transform()
-            ## Fix Spawning Point
-            spawn_point = spawn_points[0] if spawn_points else carla.Transform()
+            # Fix Spawning Point
+            spawn_point = spawn_points[0] if spawn_points else carla.Transform(
+            )
             self.player = self.world.try_spawn_actor(blueprint, spawn_point)
             self.modify_vehicle_physics(self.player)
 
@@ -613,7 +613,7 @@ class CameraManager(object):
         attachment = carla.AttachmentType
         self._camera_transforms = [
             (carla.Transform(
-                carla.Location(x=-0.5, y=0, z=2), carla.Rotation(pitch=0.0)), attachment.Rigid),
+                carla.Location(x=-0, y=0, z=2), carla.Rotation(pitch=0.0)), attachment.Rigid),
             (carla.Transform(
                 carla.Location(x=1.6, z=1.7)), attachment.Rigid),
             (carla.Transform(
@@ -641,6 +641,8 @@ class CameraManager(object):
             if item[0].startswith('sensor.camera'):
                 blp.set_attribute('image_size_x', str(hud.dim[0]))
                 blp.set_attribute('image_size_y', str(hud.dim[1]))
+                # if "rgb" in item[0]:
+                #     blp.set_attribute('fov', '150')
             elif item[0].startswith('sensor.lidar'):
                 blp.set_attribute('range', '50')
             item.append(blp)
@@ -661,7 +663,8 @@ class CameraManager(object):
             if self.sensor is not None:
                 self.sensor.destroy()
                 self.surface = None
-            print(index, self.transform_index, self._camera_transforms[self.transform_index][0])
+            print(index, self.transform_index,
+                  self._camera_transforms[self.transform_index][0])
             print(self.sensors[index])
             self.sensor = self._parent.get_world().spawn_actor(
                 self.sensors[index][-1],
@@ -722,23 +725,24 @@ class CameraManager(object):
         if self.recording:
             image.save_to_disk('_out/%08d' % image.frame)
 
+
 def pixel_to_world(image, weak_ref, weak_agent, screen_pos, K, destination):
     dc_weak = weak_ref()
     agent_weak = weak_agent()
 
     # image.save_to_disk('_out/%06d.jpg' % image.frame)
-    
+
     # image.convert(cc.Depth)
     array = np.frombuffer(image.raw_data, dtype=np.dtype("uint8"))
     array = np.reshape(array, (image.height, image.width, 4))
     array = array[:, :, :3]
-    im_array = array[:, :, ::-1] #[:, :, 0]
+    im_array = array[:, :, ::-1]  # [:, :, 0]
 
     print(im_array.shape)
 
     depth_cam_matrix = dc_weak.get_transform().get_matrix()
     depth_cam_matrix_inv = dc_weak.get_transform().get_inverse_matrix()
-    
+
     depth_cam_matrix = np.round(np.array(depth_cam_matrix), decimals=2)
     depth_cam_matrix_inv = np.round(np.array(depth_cam_matrix_inv), decimals=2)
 
@@ -770,8 +774,8 @@ def pixel_to_world(image, weak_ref, weak_agent, screen_pos, K, destination):
     pos_3d__ = np.linalg.inv(K) @ pos_2d[:, None] * depth
     pos_3d__ = pos_3d__.reshape(-1)
     print("Camera Coordinates: ", pos_3d__)
-    
-    ## Order Change
+
+    # Order Change
     pos_3d_ = np.array([pos_3d__[2], pos_3d__[0], pos_3d__[1]])
     print("After Camera Coordinates: ", pos_3d_)
 
@@ -786,12 +790,13 @@ def pixel_to_world(image, weak_ref, weak_agent, screen_pos, K, destination):
     Z = depth
 
     xyz_pos_ = np.array([X, Y, Z, 1])
-    xyz_pos = depth_cam_matrix @ xyz_pos_[:, None]
+    xyz_pos = vehicle_matrix @ depth_cam_matrix @ xyz_pos_[:, None]
     xyz_pos = xyz_pos.reshape(-1)
 
-    new_destination = carla.Location(x=pos_3d_[0], y=pos_3d_[1], z=destination.z)
+    new_destination = carla.Location(
+        x=pos_3d_[0], y=pos_3d_[1], z=destination.z)
 
-    agent_weak.set_destination(new_destination, start_location=agent_weak._vehicle.get_transform().location)
+    agent_weak.set_destination(new_destination)
     print("=======================================")
     print(f"old destination : {destination}")
     print(f"new destination : {new_destination}")
@@ -851,7 +856,7 @@ def game_loop(args):
         else:
             agent = BehaviorAgent(world.player, behavior=args.behavior)
 
-        ## Ignore Rules
+        # Ignore Rules
         agent.ignore_traffic_lights(True)
         agent.ignore_stop_signs(True)
         # agent.follow_speed_limits(True)
@@ -870,18 +875,18 @@ def game_loop(args):
 
         camera_manager = world.camera_manager
 
-        rgb_matrix = world.camera_manager.sensor.get_transform().get_matrix()
-        rgb_matrix = np.array(rgb_matrix)
-        rgb_matrix = np.round(rgb_matrix, decimals=2)
+        # rgb_matrix = world.camera_manager.sensor.get_transform().get_matrix()
+        # rgb_matrix = np.array(rgb_matrix)
+        # rgb_matrix = np.round(rgb_matrix, decimals=2)
 
-        ## Getting the Depth Sensor
+        # Getting the Depth Sensor
         depth_sensor_info = world.camera_manager.sensors[2]
         depth_camera = world.player.get_world().spawn_actor(
-                depth_sensor_info[-1],
-                camera_manager._camera_transforms[0][0],
-                attach_to=world.player,
-                attachment_type=camera_manager._camera_transforms[0][1])
-        
+            depth_sensor_info[-1],
+            camera_manager._camera_transforms[0][0],
+            attach_to=world.player,
+            attachment_type=camera_manager._camera_transforms[0][1])
+
         image_w = args.width
         image_h = args.height
         fov = camera_bp.get_attribute("fov").as_float()
@@ -902,7 +907,7 @@ def game_loop(args):
         for file_ in os.listdir(temp_dir):
             os.remove(os.path.join(temp_dir, file_))
 
-        sensor_idx = 0
+        checked = False
         while True:
             clock.tick()
             if args.sync:
@@ -922,13 +927,8 @@ def game_loop(args):
                 weak_dc = weakref.ref(depth_camera)
                 weak_agent = weakref.ref(agent)
 
-                print("RGB Camera Matrix:")
-                pprint(rgb_matrix)
-
-                depth_camera.listen(lambda image: pixel_to_world(image, weak_dc, weak_agent, screen_pos, K, destination))
-
-                pygame.draw.circle(display, (0,255,0), screen_pos, 10)
-                pygame.display.flip()
+                depth_camera.listen(lambda image: pixel_to_world(
+                    image, weak_dc, weak_agent, screen_pos, K, destination))
 
             handled = pygame.mouse.get_pressed()[0]
 
@@ -936,10 +936,29 @@ def game_loop(args):
                 destination = agent.target_destination
                 distance = np.sqrt((destination.x - curr_position.x)**2 +
                                    (destination.y - curr_position.y)**2)
+                points_2d = []
+                for x_offset in np.linspace(-1, 1, num=50):
+                    for y_offset in np.linspace(-1, 1, num=50):
+                        world_point = carla.Location(
+                            x=destination.x+x_offset,
+                            y=destination.y+y_offset,
+                            z=curr_position.z
+                        )
+                        point_2d = world_to_pixel(
+                            world, world_point, K, curr_position)
+                        points_2d.append(point_2d)
 
-            world.tick(clock)
-            world.render(display)
-            pygame.display.flip()
+                world.tick(clock)
+                world.render(display)
+                pprint(points_2d)
+                for point in points_2d:
+                    pygame.draw.circle(display, (0, 255, 0),
+                                       (point[0], point[1]), 10)
+                pygame.display.flip()
+            else:
+                world.tick(clock)
+                world.render(display)
+                pygame.display.flip()
 
             # if agent.done():
             #     print("reached destination: ", vehicle_pos)
@@ -969,6 +988,28 @@ def game_loop(args):
             world.destroy()
 
         pygame.quit()
+
+
+def world_to_pixel(world, destination, K, curr_position):
+    rgb_camera = world.camera_manager.sensor
+    rgb_matrix = rgb_camera.get_transform().get_inverse_matrix()[:3]
+
+    point_3d = np.array([destination.x, destination.y, curr_position.z, 1])
+    point_3d = np.round(point_3d, decimals=2)
+    # print("3D world coordinate: ", point_3d)
+
+    cam_coords = rgb_matrix @ point_3d[:, None]
+    cam_coords = np.array([cam_coords[1], cam_coords[2]*-1, cam_coords[0]])
+    points_2d = np.dot(K, cam_coords)
+
+    points_2d = np.array([
+        points_2d[0, :] / points_2d[2, :],
+        points_2d[1, :] / points_2d[2, :],
+        points_2d[2, :]]
+    )
+    points_2d = points_2d.reshape(-1)
+    points_2d = np.round(points_2d, decimals=2)
+    return points_2d
 
 
 # ==============================================================================
@@ -1025,7 +1066,7 @@ def main():
         '-b', '--behavior', type=str,
         choices=["cautious", "normal", "aggressive"],
         help='Choose one of the possible agent behaviors (default: normal) ',
-        default='aggressive')
+        default='normal')
     argparser.add_argument(
         '-s', '--seed',
         help='Set seed for repeating executions (default: None)',
