@@ -928,6 +928,7 @@ def game_loop(args):
         traffic_manager = client.get_trafficmanager()
         sim_world = client.get_world()
 
+        actor_list = []
         if args.sync:
             settings = sim_world.get_settings()
             settings.synchronous_mode = True
@@ -943,6 +944,68 @@ def game_loop(args):
         hud = HUD(args.width, args.height)
         world = World(client.get_world(), hud, args)
         controller = KeyboardControl(world)
+
+        ######### spawn vehicles begin #########
+        spawn_points = world.world.get_map().get_spawn_points()
+        random.shuffle(spawn_points)
+
+        print('found %d spawn points.' % len(spawn_points))
+
+        count = 30
+
+        blueprints = world.world.get_blueprint_library().filter('vehicle.*')
+
+        blueprints = [x for x in blueprints if int(
+            x.get_attribute('number_of_wheels')) == 4]
+        blueprints = [
+            x for x in blueprints if not x.id.endswith('microlino')]
+        blueprints = [
+            x for x in blueprints if not x.id.endswith('carlacola')]
+        blueprints = [
+            x for x in blueprints if not x.id.endswith('cybertruck')]
+        blueprints = [x for x in blueprints if not x.id.endswith('t2')]
+        blueprints = [
+            x for x in blueprints if not x.id.endswith('sprinter')]
+        blueprints = [
+            x for x in blueprints if not x.id.endswith('firetruck')]
+        blueprints = [
+            x for x in blueprints if not x.id.endswith('ambulance')]
+
+        spawn_points = world.world.get_map().get_spawn_points()
+        number_of_spawn_points = len(spawn_points)
+
+        if count < number_of_spawn_points:
+            random.shuffle(spawn_points)
+        elif count > number_of_spawn_points:
+            msg = 'requested %d vehicles, but could only find %d spawn points'
+            logging.warning(msg, count, number_of_spawn_points)
+            count = number_of_spawn_points
+
+        SpawnActor = carla.command.SpawnActor
+        SetAutopilot = carla.command.SetAutopilot
+        FutureActor = carla.command.FutureActor
+
+        batch = []
+        for n, transform in enumerate(spawn_points):
+            if n >= count:
+                break
+            blueprint = random.choice(blueprints)
+            if blueprint.has_attribute('color'):
+                color = random.choice(
+                    blueprint.get_attribute('color').recommended_values)
+                blueprint.set_attribute('color', color)
+            blueprint.set_attribute('role_name', 'autopilot')
+            batch.append(SpawnActor(blueprint, transform).then(
+                SetAutopilot(FutureActor, True)))
+
+        for response in client.apply_batch_sync(batch):
+            if response.error:
+                logging.error(response.error)
+            else:
+                actor_list.append(response.actor_id)
+
+        ######### spawn vehicles end #########
+
         if args.agent == "Basic":
             agent = BasicAgent(world.player)
         else:
@@ -1017,7 +1080,8 @@ def game_loop(args):
             curr_position = agent._vehicle.get_transform().location
 
             if saving[2]:
-                shutil.rmtree(f'_out/{episode_number}')
+                if str(episode_number) is os.listdir('_out'):
+                    shutil.rmtree(f'_out/{episode_number}')
                 saving[2] = False
 
             if pygame.mouse.get_pressed()[0] and not handled:
@@ -1122,6 +1186,10 @@ def game_loop(args):
                 world.player.apply_control(control)
 
     finally:
+
+        print('\ndestroying %d actors' % len(actor_list))
+        client.apply_batch_sync([carla.command.DestroyActor(x)
+                                for x in actor_list])
 
         if world is not None:
             settings = world.world.get_settings()
