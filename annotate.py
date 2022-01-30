@@ -37,15 +37,13 @@ def world_to_pixel(K, rgb_matrix, destination,  curr_position):
 
 
 def annotate(args):
-    os.makedirs(args.out_dir, exist_ok=True)
-
-    for out_file in os.listdir(args.out_dir):
-        shutil.rmtree(os.path.join(args.out_dir, out_file))
 
     episodes = os.listdir(args.dir)
     print(episodes)
     for episode in episodes:
-        os.makedirs(os.path.join(args.out_dir, episode), exist_ok=True)
+        shutil.rmtree(os.path.join(args.dir, episode, 'annotations'))
+        os.makedirs(os.path.join(args.dir, episode,
+                    'annotations'), exist_ok=True)
         print(f'Episode {episode}')
         with open(os.path.join(args.dir, episode, 'vehicle_positions.txt')) as f:
             coordinates = f.readlines()
@@ -95,7 +93,7 @@ def annotate(args):
                 if x < 0 or x >= args.width or y < 0 or y >= args.height:
                     continue
                 im = cv2.circle(im, (round(annotations[i, 0]), round(
-                    annotations[i, 1])), 3, (0, 255, 0), thickness=-1)
+                    annotations[i, 1])), 4, (0, 255, 0), thickness=-1)
 
             # for x_offset in np.linspace(-2, 2, num=150):
             #     for y_offset in np.linspace(-2, 2, num=150):
@@ -103,7 +101,8 @@ def annotate(args):
             #             K, inverse_matrix, target_coordinate+np.array([x_offset, y_offset, 0]), relative_coords[i])
             #         im = cv2.circle(im, (round(annotation[0]), round(
             #             annotation[1])), 2, (0, 255, 0), thickness=-1)
-            cv2.imwrite(os.path.join(args.out_dir, episode, frame), im)
+            cv2.imwrite(os.path.join(
+                args.dir, episode, 'annotations', frame), im)
 
 
 def main():
@@ -113,10 +112,6 @@ def main():
         '-d', '--dir',
         default='_out/',
         help='Input Data Directory Path')
-    argparser.add_argument(
-        '-o', '--out_dir',
-        default='_annotated_out',
-        help='Output Data Directory Path')
     argparser.add_argument(
         '-n', '--height',
         default=720,
