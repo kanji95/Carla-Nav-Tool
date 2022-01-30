@@ -1013,8 +1013,8 @@ def game_loop(args):
             agent = BehaviorAgent(world.player, behavior=args.behavior)
 
         # Ignore Rules
-        agent.ignore_traffic_lights(True)
-        agent.ignore_stop_signs(True)
+        # agent.ignore_traffic_lights(True)
+        # agent.ignore_stop_signs(True)
         # agent.follow_speed_limits(True)
         # agent.set_target_speed(10)
 
