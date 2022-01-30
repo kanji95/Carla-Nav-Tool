@@ -796,6 +796,7 @@ def world_to_pixel(K, rgb_matrix, destination,  curr_position):
     cam_coords = rgb_matrix @ point_3d
     # cam_coords = rgb_matrix @ point_3d[:, None]
     cam_coords = np.array([cam_coords[1], cam_coords[2]*-1, cam_coords[0]])
+    cam_coords = cam_coords[:, cam_coords[2, :] > 0]
     points_2d = np.dot(K, cam_coords)
 
     points_2d = np.array([
