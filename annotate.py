@@ -41,7 +41,10 @@ def annotate(args):
     episodes = os.listdir(args.dir)
     print(episodes)
     for episode in episodes:
-        shutil.rmtree(os.path.join(args.dir, episode, 'annotations'))
+        try:
+            shutil.rmtree(os.path.join(args.dir, episode, 'annotations'))
+        except:
+            pass
         os.makedirs(os.path.join(args.dir, episode,
                     'annotations'), exist_ok=True)
         print(f'Episode {episode}')
