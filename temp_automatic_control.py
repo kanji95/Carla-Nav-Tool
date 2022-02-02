@@ -1081,8 +1081,11 @@ def game_loop(args):
             curr_position = agent._vehicle.get_transform().location
 
             if saving[2]:
-                if str(episode_number) is os.listdir('_out'):
+                # if str(episode_number) is os.listdir('_out'):
+                try:
                     shutil.rmtree(f'_out/{episode_number}')
+                except:
+                    print(f'Unable to delete _out/{episode_number}')
                 saving[2] = False
 
             if pygame.mouse.get_pressed()[0] and not handled:
