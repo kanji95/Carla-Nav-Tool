@@ -764,16 +764,23 @@ class CameraManager(object):
             os.makedirs(f'_out/{episode_number}/images', exist_ok=True)
             os.makedirs(f'_out/{episode_number}/inverse_matrix', exist_ok=True)
 
+            # np.save(f'_out/{episode_number}/inverse_matrix/{image.frame:08d}.npy',
+            #         np.array(self.sensor.get_transform().get_inverse_matrix()))
+
+            np.save(f'_out/{episode_number}/inverse_matrix/{image.frame:08d}.npy',
+                    np.array(image.transform.get_inverse_matrix()))
+
             img = np.frombuffer(image.raw_data, dtype=np.dtype("uint8"))
             img = np.reshape(
                 img, (image.height, image.width, 4))  # RGBA format
             img = img[:, :, :]  # BGR
+
+            # im = Image.fromarray(img)
+            # im.save(f'_out/{episode_number}/images/{image.frame:08d}.png')
             cv2.imwrite(
                 f'_out/{episode_number}/images/{image.frame:08d}.png', img)
             # image.save_to_disk(
             #     f'_out/{episode_number}/images/{image.frame:08d}')
-            np.save(f'_out/{episode_number}/inverse_matrix/{image.frame:08d}.npy',
-                    np.array(depth_camera.get_transform().get_inverse_matrix()))
             with open(f'_out/{episode_number}/vehicle_positions.txt', 'a+') as f:
                 f.write(
                     f'{agent._vehicle.get_transform().location.x},{agent._vehicle.get_transform().location.y},{agent._vehicle.get_transform().location.z}\n')
@@ -790,7 +797,7 @@ def world_to_pixel(K, rgb_matrix, destination,  curr_position):
     point_3d[2] = curr_position[2]
 
     # point_3d = np.array([destination[0], destination[1], curr_position[2], 1])
-    point_3d = np.round(point_3d, decimals=2)
+    # point_3d = np.round(point_3d, decimals=2)
     # print("3D world coordinate: ", point_3d)
 
     cam_coords = rgb_matrix @ point_3d
@@ -805,7 +812,7 @@ def world_to_pixel(K, rgb_matrix, destination,  curr_position):
         points_2d[2, :]]
     )
     points_2d = points_2d.reshape(3, -1)
-    points_2d = np.round(points_2d, decimals=2)
+    # points_2d = np.round(points_2d, decimals=2)
     return points_2d
 
 
@@ -838,9 +845,9 @@ def pixel_to_world(image, weak_ref, weak_agent, screen_pos, K, destination, set_
 
     print("=========================")
     print("Depth Camera Matrix:")
-    pprint(depth_cam_matrix)
+    # pprint(depth_cam_matrix)
     print("Vehicle Matrix:")
-    pprint(vehicle_matrix)
+    # pprint(vehicle_matrix)
     print("=========================")
 
     print("Pixel Coords: ", screen_pos)
@@ -883,6 +890,17 @@ def pixel_to_world(image, weak_ref, weak_agent, screen_pos, K, destination, set_
 
     if set_destination:
         agent_weak.set_destination(new_destination)
+
+    curr_position = agent._vehicle.get_transform().location
+
+    pos = np.array(
+        [curr_position.x, curr_position.y, curr_position.z])
+
+    w2px = world_to_pixel(K, depth_cam_matrix_inv, np.array(
+        [agent_weak.target_destination.x, agent_weak.target_destination.y, agent_weak.target_destination.z]).reshape(3, 1), pos).T
+
+    # print(w2px[:,:2]/w2px[:,2])
+    print(w2px)
 
     command_given = True
     print("=======================================")
@@ -1130,8 +1148,10 @@ def game_loop(args):
 
                 points_2d = []
 
-                x_offsets = np.linspace(-0.5, 0.5, num=25)
-                y_offsets = np.linspace(-0.5, 0.5, num=25)
+                # x_offsets = np.linspace(-0.5, 0.5, num=25)
+                # y_offsets = np.linspace(-0.5, 0.5, num=25)
+                x_offsets = np.linspace(-0.0, 0, num=1)
+                y_offsets = np.linspace(-0, 0, num=1)
                 X, Y = np.meshgrid(x_offsets, y_offsets)
 
                 mesh = np.dstack([X, Y])
@@ -1188,6 +1208,7 @@ def game_loop(args):
                 control.manual_gear_shift = False
             if agent.target_destination:
                 world.player.apply_control(control)
+                # pass
 
     finally:
 
