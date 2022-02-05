@@ -939,6 +939,8 @@ def game_loop(args):
 
         client = carla.Client(args.host, args.port)
         client.set_timeout(4.0)
+        client.load_world(
+            f'{args.map}', carla.MapLayer.Buildings | carla.MapLayer.ParkedVehicles)
 
         blueprint_lib = client.get_world().get_blueprint_library()
         camera_bp = blueprint_lib.filter("sensor.camera.depth")[0]
@@ -1254,6 +1256,13 @@ def main():
         default=2000,
         type=int,
         help='TCP port to listen to (default: 2000)')
+    argparser.add_argument(
+        '-m', '--map',
+        metavar='M',
+        default='Town10HD',
+        # choices=[f'Town01','Town02','Town10HD_Opt'],
+        type=str,
+        help='World map (default: Town10HD)')
     argparser.add_argument(
         '--res',
         metavar='WIDTHxHEIGHT',
