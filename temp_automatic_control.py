@@ -1259,10 +1259,10 @@ def main():
     argparser.add_argument(
         '-m', '--map',
         metavar='M',
-        default='Town10HD',
-        # choices=[f'Town01','Town02','Town10HD_Opt'],
+        default='Town10',
+        choices=[f'Town{x:02d}' for x in [1, 2, 3, 4, 5, 6, 7, 10]]+['Town10HD'],
         type=str,
-        help='World map (default: Town10HD)')
+        help='World map (default: Town10)')
     argparser.add_argument(
         '--res',
         metavar='WIDTHxHEIGHT',
