@@ -45,6 +45,7 @@ try:
     from pygame.locals import K_q
     from pygame import K_d
     from pygame import K_z
+    from pygame import K_r
     from pygame import K_i
 except ImportError:
     raise RuntimeError(
@@ -248,6 +249,7 @@ class KeyboardControl(object):
                 self._is_ignore_shortcut(event.key)
                 self._is_next_episode_shortcut(event.key)
                 self._is_delete_episode_shortcut(event.key)
+                self._is_rename_shortcut(event.key)
 
     @staticmethod
     def _is_quit_shortcut(key):
@@ -275,6 +277,15 @@ class KeyboardControl(object):
         if key == K_z:
             saving[1] = True
             saving[2] = True
+
+    @staticmethod
+    def _is_rename_shortcut(key):
+        global episode_number
+        global command_given
+        if key == K_r:
+            command = input('Re-enter correct command:')
+            with open(f'_out/{episode_number}/command.txt', 'w') as f:
+                f.write(command)
 
 
 # ==============================================================================
