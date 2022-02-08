@@ -137,6 +137,7 @@ class World(object):
         cam_index = self.camera_manager.index if self.camera_manager is not None else 0
         cam_pos_id = self.camera_manager.transform_index if self.camera_manager is not None else 0
 
+        print(self.world.get_blueprint_library().filter(self._actor_filter))
         # Get a random blueprint.
         blueprint = random.choice(
             self.world.get_blueprint_library().filter(self._actor_filter))
@@ -161,11 +162,11 @@ class World(object):
                 print('Please add some Vehicle Spawn Point to your UE4 scene.')
                 sys.exit(1)
             spawn_points = self.map.get_spawn_points()
-            # spawn_point = random.choice(
-            #     spawn_points) if spawn_points else carla.Transform()
+            spawn_point = random.choice(
+                spawn_points) if spawn_points else carla.Transform()
             # Fix Spawning Point
-            spawn_point = spawn_points[0] if spawn_points else carla.Transform(
-            )
+            # spawn_point = spawn_points[0] if spawn_points else carla.Transform(
+            # )
             self.player = self.world.try_spawn_actor(blueprint, spawn_point)
             self.modify_vehicle_physics(self.player)
 
@@ -283,7 +284,7 @@ class KeyboardControl(object):
         global episode_number
         global command_given
         if key == K_r:
-            command = input('Re-enter correct command:')
+            command = input('Re-enter correct command: ')
             with open(f'_out/{episode_number}/command.txt', 'w') as f:
                 f.write(command)
 
@@ -1286,7 +1287,7 @@ def main():
     argparser.add_argument(
         '--filter',
         metavar='PATTERN',
-        default='vehicle.audi*',
+        default='vehicle.audi.tt',
         help='Actor filter (default: "vehicle.*")')
     argparser.add_argument(
         '-l', '--loop',
