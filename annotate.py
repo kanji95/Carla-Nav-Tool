@@ -55,7 +55,7 @@ def annotate(args):
         with open(os.path.join(args.dir, episode, 'target_positions.txt')) as f:
             coordinates = f.readlines()
         target_coordinates = np.array([[float(x.strip()) for x in last_coordinate.split(
-            ',')] for last_coordinate in coordinates])
+            ',')] for last_coordinate in coordinates])[:, :3]
         target_coordinates[:-3] = target_coordinates[3:]
 
         print(float_coordinates.shape)

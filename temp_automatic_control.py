@@ -746,6 +746,7 @@ class CameraManager(object):
         global saving
         global agent
         global depth_camera
+        global target_number
 
         self = weak_self()
         if not self:
@@ -798,7 +799,7 @@ class CameraManager(object):
                     f'{agent._vehicle.get_transform().location.x},{agent._vehicle.get_transform().location.y},{agent._vehicle.get_transform().location.z}\n')
             with open(f'_out/{episode_number}/target_positions.txt', 'a+') as f:
                 f.write(
-                    f'{agent.target_destination.x},{agent.target_destination.y},{agent.target_destination.z}\n')
+                    f'{agent.target_destination.x},{agent.target_destination.y},{agent.target_destination.z},{target_number}\n')
 
 
 def world_to_pixel(K, rgb_matrix, destination,  curr_position):
@@ -830,6 +831,7 @@ def world_to_pixel(K, rgb_matrix, destination,  curr_position):
 
 def pixel_to_world(image, weak_ref, weak_agent, screen_pos, K, destination, set_destination=True):
     global command_given
+    global target_number
 
     dc_weak = weak_ref()
     agent_weak = weak_agent()
@@ -900,6 +902,7 @@ def pixel_to_world(image, weak_ref, weak_agent, screen_pos, K, destination, set_
     new_destination = carla.Location(
         x=pos_3d_[0], y=pos_3d_[1], z=destination.z)
 
+    target_number += 1
     if set_destination:
         agent_weak.set_destination(new_destination)
 
@@ -940,6 +943,7 @@ def game_loop(args):
     global episode_number
     global agent
     global depth_camera
+    global target_number
 
     pygame.init()
     pygame.font.init()
@@ -1099,6 +1103,7 @@ def game_loop(args):
         # currently saving, need to start next episode, delete current episode
         saving = [True, True, False]
         episode_number = 0
+        target_number = 0
         checked = False
 
         while True:
@@ -1125,6 +1130,7 @@ def game_loop(args):
                 if saving[0]:
                     if saving[1]:
                         saving[1] = False
+                        target_number = 0
                         episode_number += 1
                         os.makedirs(f'_out/{episode_number}', exist_ok=True)
                         command = input('Enter Command: ')
@@ -1334,6 +1340,7 @@ if __name__ == '__main__':
     global episode_number
     global agent
     global depth_camera
+    global target_number
 
     command_given = False
     saving = [True, True, False]
