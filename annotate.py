@@ -42,7 +42,14 @@ def annotate(args):
     print(episodes)
     for episode in episodes:
         try:
-            shutil.rmtree(os.path.join(args.dir, episode, 'annotations'))
+            annotation_dir = os.path.join(args.dir, episode, 'annotations')
+            image_dir = os.path.join(args.dir, episode, 'images')
+            matrix_dir = os.path.join(args.dir, episode, 'inverse_matrix')
+            if os.path.exists(annotation_dir) and (len(os.listdir(annotation_dir)) == len(os.listdir(image_dir)) == len(os.listdir(matrix_dir))):
+                print(f"Skipping {episode}")
+                pass
+            else:
+                shutil.rmtree(os.path.join(args.dir, episode, 'annotations'))
         except:
             pass
         os.makedirs(os.path.join(args.dir, episode,
@@ -64,8 +71,13 @@ def annotate(args):
 
         frames = sorted(os.listdir(os.path.join(args.dir, episode, 'images')))
 
-        for i, frame in enumerate(frames):
+        debug = False
+        for i, frame in enumerate(frames[300:]):
             name = '.'.join(frame.split('.')[:-1])
+            if name in ['00153405']:
+                debug = True
+            if debug:
+                print("debugging")
             try:
                 inverse_matrix = np.load(os.path.join(
                     args.dir, episode, 'inverse_matrix', name+'.npy'))
@@ -95,8 +107,10 @@ def annotate(args):
                 y = round(annotations[i, 1])
                 if x < 0 or x >= args.width or y < 0 or y >= args.height:
                     continue
-                im = cv2.circle(im, (round(annotations[i, 0]), round(
-                    annotations[i, 1])), 4, (0, 255, 0), thickness=-1)
+                # im = cv2.circle(im, (round(annotations[i, 0]), round(
+                #     annotations[i, 1])), 4, (0, 255, 0), thickness=-1)
+                # print(x, y)
+                im = cv2.circle(im, (int(x), int(y)), 4, (0, 255, 0), thickness=-1)
 
             # for x_offset in np.linspace(-2, 2, num=150):
             #     for y_offset in np.linspace(-2, 2, num=150):

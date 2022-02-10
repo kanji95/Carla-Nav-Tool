@@ -12,12 +12,13 @@
 
 from __future__ import print_function
 import shutil
-from agents.navigation.basic_agent import BasicAgent  # pylint: disable=import-error
-from agents.navigation.behavior_agent import BehaviorAgent  # pylint: disable=import-error
+# from agents.navigation.basic_agent import BasicAgent  # pylint: disable=import-error
+# from agents.navigation.behavior_agent import BehaviorAgent  # pylint: disable=import-error
 from carla import ColorConverter as cc
 import carla
 
 import argparse
+import threading
 import collections
 import datetime
 import glob
@@ -73,6 +74,8 @@ try:
 except IndexError:
     pass
 
+from agents.navigation.basic_agent import BasicAgent  # pylint: disable=import-error
+from agents.navigation.behavior_agent import BehaviorAgent
 
 # ==============================================================================
 # -- Global functions ----------------------------------------------------------
@@ -157,11 +160,11 @@ class World(object):
                 print('Please add some Vehicle Spawn Point to your UE4 scene.')
                 sys.exit(1)
             spawn_points = self.map.get_spawn_points()
-            # spawn_point = random.choice(
-            #     spawn_points) if spawn_points else carla.Transform()
-            # Fix Spawning Point
-            spawn_point = spawn_points[0] if spawn_points else carla.Transform(
-            )
+            spawn_point = random.choice(
+                spawn_points) if spawn_points else carla.Transform()
+            # # Fix Spawning Point
+            # spawn_point = spawn_points[0] if spawn_points else carla.Transform(
+            # )
             self.player = self.world.try_spawn_actor(blueprint, spawn_point)
             self.modify_vehicle_physics(self.player)
 
@@ -615,6 +618,8 @@ class CameraManager(object):
         self._camera_transforms = [
             (carla.Transform(
                 carla.Location(x=-0, y=0, z=2), carla.Rotation(pitch=0.0)), attachment.Rigid),
+            # (carla.Transform(
+            #     carla.Location(x=-5.5, y=0, z=2), carla.Rotation(pitch=8.0)), attachment.SpringArm),
             (carla.Transform(
                 carla.Location(x=1.6, z=1.7)), attachment.Rigid),
             (carla.Transform(
@@ -642,6 +647,7 @@ class CameraManager(object):
             if item[0].startswith('sensor.camera'):
                 blp.set_attribute('image_size_x', str(hud.dim[0]))
                 blp.set_attribute('image_size_y', str(hud.dim[1]))
+                # blp.set_attribute('sensor_tick', str(1.0))
                 # if "rgb" in item[0]:
                 #     blp.set_attribute('fov', '150')
             elif item[0].startswith('sensor.lidar'):
@@ -727,31 +733,62 @@ class CameraManager(object):
             image.save_to_disk('_out/%08d' % image.frame)
 
 
-def world_to_pixel(world, destination, K, curr_position):
+def world_to_pixel(world, world_point, K, curr_position, logging=False):
+    # print("===============================world_to_pixel========================================")
     rgb_camera = world.camera_manager.sensor
-    rgb_matrix = rgb_camera.get_transform().get_inverse_matrix()[:3]
+    rgb_matrix = rgb_camera.get_transform().get_inverse_matrix() #[:3]
+    rgb_matrix = np.array(rgb_matrix)
+    
+    cam_matrix = rgb_camera.get_transform().get_matrix()
+    cam_matrix = np.array(cam_matrix)
+    cam_y_coordinate = cam_matrix[2, 3]
 
-    point_3d = np.array([destination.x, destination.y, curr_position.z, 1])
-    point_3d = np.round(point_3d, decimals=2)
+    # print("RGB Matrix\n", np.round(rgb_matrix, decimals=1))
+
+    # rgb_matrix = np.round(rgb_matrix, decimals=1)
+
+    point_3d = np.array([world_point.x, world_point.y, world_point.z, 1])
+    # print("3D point: ", np.round(point_3d, decimals=2))
+    # point_3d = np.round(point_3d, decimals=1)
     # print("3D world coordinate: ", point_3d)
 
-    cam_coords = rgb_matrix @ point_3d[:, None]
+    # cam_coords = rgb_matrix @ point_3d[:, None]
+    cam_coords = np.dot(rgb_matrix[:3], point_3d)
+    # cam_coords = np.dot(world.camera_manager.sensor.get_transform().get_inverse_matrix()[:3], point_3d)
+    # print("Camera points Before: ", np.round(cam_coords.reshape(-1), decimals=1))
     cam_coords = np.array([cam_coords[1], cam_coords[2]*-1, cam_coords[0]])
-    points_2d = np.dot(K, cam_coords)
+    cam_coords[1] = cam_y_coordinate
+    # print("Camera points After: ", np.round(cam_coords.reshape(-1), decimals=1))
+    # cam_coords = np.round(cam_coords, decimals=1)
 
-    points_2d = np.array([
-        points_2d[0, :] / points_2d[2, :],
-        points_2d[1, :] / points_2d[2, :],
-        points_2d[2, :]]
-    )
-    points_2d = points_2d.reshape(-1)
-    points_2d = np.round(points_2d, decimals=2)
+    points_2d = np.dot(K, cam_coords)
+    points_2d = points_2d/points_2d[-1]
+    # points_2d = np.array([
+    #     points_2d[0, :] / points_2d[2, :],
+    #     points_2d[1, :] / points_2d[2, :],
+    #     points_2d[2, :] / points_2d[2, :],]
+    # )
+    # points_2d = points_2d.reshape(-1)
+    # print("2D points: ", np.round(points_2d, decimals=2))
+    # print("======================================================================================")
+    # points_2d = np.round(points_2d, decimals=2)
+    if logging:
+        print("===============================world_to_pixel========================================")
+        print("RGB Matrix\n", np.round(rgb_matrix, decimals=5))
+        print("Camera Matrix\n", np.round(cam_matrix, decimals=5))
+        print("RGB Det of matrix: ", np.linalg.det(rgb_matrix[:3, :3]))
+        print("Camera Det of matrix: ", np.linalg.det(cam_matrix[:3, :3]))
+        print("3D world coordinate: ", point_3d)
+        print("Camera points After: ", np.round(cam_coords, decimals=2))
+        print("2D points: ", np.round(points_2d, decimals=2))
+        print("======================================================================================")
     return points_2d
 
 
-def pixel_to_world(image, weak_ref, weak_agent, screen_pos, K, destination):
+def pixel_to_world(image, weak_ref, weak_agent, screen_pos, K, destination, world_ref):
     dc_weak = weak_ref()
     agent_weak = weak_agent()
+    world_weak = world_ref()
 
     # image.save_to_disk('_out/%06d.jpg' % image.frame)
 
@@ -777,6 +814,8 @@ def pixel_to_world(image, weak_ref, weak_agent, screen_pos, K, destination):
     print("=========================")
     print("Depth Camera Matrix:")
     pprint(depth_cam_matrix)
+    pprint("Depth Camera inverse Matrix:")
+    pprint(depth_cam_matrix_inv)
     print("Vehicle Matrix:")
     pprint(vehicle_matrix)
     print("=========================")
@@ -827,6 +866,10 @@ def pixel_to_world(image, weak_ref, weak_agent, screen_pos, K, destination):
     print(f"Est. position   : {xyz_pos}")
     print("=======================================")
 
+    pixel_decoded = world_to_pixel(world_weak, new_destination, K, agent_weak._vehicle.get_transform().location, logging=True)
+
+    print("Projective Trans: ", pixel_decoded)
+
     time.sleep(0.5)
     dc_weak.stop()
 
@@ -853,7 +896,12 @@ def game_loop(args):
         client.set_timeout(4.0)
 
         blueprint_lib = client.get_world().get_blueprint_library()
-        camera_bp = blueprint_lib.filter("sensor.camera.depth")[0]
+        camera_depth_blp = blueprint_lib.filter("sensor.camera.depth")[0]
+        camera_rgb_blp = blueprint_lib.filter("sensor.camera.rgb")[0]
+
+        camera_rgb_blp.set_attribute('image_size_x', str(args.width))
+        camera_rgb_blp.set_attribute('image_size_y', str(args.height))
+        camera_rgb_blp.set_attribute('sensor_tick', str(1.0))
         # print(blueprint_lib.filter('vehicle.*.*'))
 
         traffic_manager = client.get_trafficmanager()
@@ -910,9 +958,16 @@ def game_loop(args):
             attach_to=world.player,
             attachment_type=camera_manager._camera_transforms[0][1])
 
+        # rgb_sensor_info = world.camera_manager.sensors[0]
+        # rgb_camera_sensor = world.player.get_world().spawn_actor(
+        #     camera_rgb_blp,
+        #     camera_manager._camera_transforms[0][0],
+        #     attach_to=world.player,
+        #     attachment_type=camera_manager._camera_transforms[0][1])
+
         image_w = args.width
         image_h = args.height
-        fov = camera_bp.get_attribute("fov").as_float()
+        fov = camera_depth_blp.get_attribute("fov").as_float()
         focal = image_w / (2.0 * np.tan(fov * np.pi / 360.0))
 
         # Calculating the Calibration Matrix
@@ -927,8 +982,8 @@ def game_loop(args):
 
         handled = False
 
-        for file_ in os.listdir(temp_dir):
-            shutil.rmtree(os.path.join(temp_dir, file_))
+        # for file_ in os.listdir(temp_dir):
+        #     shutil.rmtree(os.path.join(temp_dir, file_))
 
         checked = False
         while True:
@@ -949,9 +1004,10 @@ def game_loop(args):
                 # Listening to Depth Sensor Data
                 weak_dc = weakref.ref(depth_camera)
                 weak_agent = weakref.ref(agent)
+                world_ref = weakref.ref(world)
 
                 depth_camera.listen(lambda image: pixel_to_world(
-                    image, weak_dc, weak_agent, screen_pos, K, destination))
+                    image, weak_dc, weak_agent, screen_pos, K, destination, world_ref))
 
             handled = pygame.mouse.get_pressed()[0]
 
@@ -960,16 +1016,26 @@ def game_loop(args):
                 distance = np.sqrt((destination.x - curr_position.x)**2 +
                                    (destination.y - curr_position.y)**2)
                 points_2d = []
-                for x_offset in np.linspace(-1, 1, num=50):
-                    for y_offset in np.linspace(-1, 1, num=50):
-                        world_point = carla.Location(
-                            x=destination.x+x_offset,
-                            y=destination.y+y_offset,
-                            z=curr_position.z
-                        )
-                        point_2d = world_to_pixel(
-                            world, world_point, K, curr_position)
-                        points_2d.append(point_2d)
+                world_point = carla.Location(
+                    x=destination.x,
+                    y=destination.y,
+                    z=destination.z
+                )
+                point_2d = world_to_pixel(
+                    world, world_point, K, curr_position, logging=False)
+                points_2d.append(point_2d)
+                # time.sleep(0.01)
+                # time.sleep(0.02)
+                # for x_offset in np.linspace(-0.5, 0.5, num=1):
+                #     for y_offset in np.linspace(-0.5, 0.5, num=1):
+                #         world_point = carla.Location(
+                #             x=destination.x+x_offset,
+                #             y=destination.y+y_offset,
+                #             z=curr_position.z
+                #         )
+                #         point_2d = world_to_pixel(
+                #             world, world_point, K, curr_position)
+                #         points_2d.append(point_2d)
 
                 world.tick(clock)
                 world.render(display)
@@ -995,8 +1061,8 @@ def game_loop(args):
 
             control = agent.run_step()
             control.manual_gear_shift = False
-            if agent.target_destination:
-                world.player.apply_control(control)
+            # if agent.target_destination:
+            #     world.player.apply_control(control)
 
     finally:
 

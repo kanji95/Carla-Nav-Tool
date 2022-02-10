@@ -12,8 +12,8 @@
 
 from __future__ import print_function
 import shutil
-from agents.navigation.basic_agent import BasicAgent  # pylint: disable=import-error
-from agents.navigation.behavior_agent import BehaviorAgent  # pylint: disable=import-error
+# from agents.navigation.basic_agent import BasicAgent  # pylint: disable=import-error
+# from agents.navigation.behavior_agent import BehaviorAgent  # pylint: disable=import-error
 from carla import ColorConverter as cc
 import carla
 
@@ -76,6 +76,8 @@ try:
 except IndexError:
     pass
 
+from agents.navigation.basic_agent import BasicAgent  # pylint: disable=import-error
+from agents.navigation.behavior_agent import BehaviorAgent  # pylint: disable=import-error
 
 # ==============================================================================
 # -- Global functions ----------------------------------------------------------
@@ -160,11 +162,11 @@ class World(object):
                 print('Please add some Vehicle Spawn Point to your UE4 scene.')
                 sys.exit(1)
             spawn_points = self.map.get_spawn_points()
-            # spawn_point = random.choice(
-            #     spawn_points) if spawn_points else carla.Transform()
+            spawn_point = random.choice(
+                spawn_points) if spawn_points else carla.Transform()
             # Fix Spawning Point
-            spawn_point = spawn_points[0] if spawn_points else carla.Transform(
-            )
+            # spawn_point = spawn_points[0] if spawn_points else carla.Transform(
+            # )
             self.player = self.world.try_spawn_actor(blueprint, spawn_point)
             self.modify_vehicle_physics(self.player)
 
@@ -196,7 +198,7 @@ class World(object):
         try:
             physics_control = actor.get_physics_control()
             physics_control.use_sweep_wheel_collision = True
-            actor.apply_physics_control(physics_control)
+            # actor.apply_physics_control(physics_control)
         except Exception:
             pass
 
@@ -645,6 +647,8 @@ class CameraManager(object):
         self._camera_transforms = [
             (carla.Transform(
                 carla.Location(x=-0, y=0, z=2), carla.Rotation(pitch=0.0)), attachment.Rigid),
+            # (carla.Transform(
+            #     carla.Location(x=-3.5, y=0, z=2), carla.Rotation(pitch=8.0)), attachment.SpringArm),
             (carla.Transform(
                 carla.Location(x=1.6, z=1.7)), attachment.Rigid),
             (carla.Transform(
@@ -768,12 +772,14 @@ class CameraManager(object):
             img = np.reshape(
                 img, (image.height, image.width, 4))  # RGBA format
             img = img[:, :, :]  # BGR
+
+            inverse_matrix = self.sensor.get_transform().get_inverse_matrix()
             cv2.imwrite(
-                f'_out/{episode_number}/images/{image.frame:08d}.png', img)
+                f'_out/{episode_number}/images/{image.frame:08d}.jpg', img)
             # image.save_to_disk(
             #     f'_out/{episode_number}/images/{image.frame:08d}')
             np.save(f'_out/{episode_number}/inverse_matrix/{image.frame:08d}.npy',
-                    np.array(depth_camera.get_transform().get_inverse_matrix()))
+                    np.array(inverse_matrix))
             with open(f'_out/{episode_number}/vehicle_positions.txt', 'a+') as f:
                 f.write(
                     f'{agent._vehicle.get_transform().location.x},{agent._vehicle.get_transform().location.y},{agent._vehicle.get_transform().location.z}\n')
@@ -782,7 +788,9 @@ class CameraManager(object):
                     f'{agent.target_destination.x},{agent.target_destination.y},{agent.target_destination.z}\n')
 
 
-def world_to_pixel(K, rgb_matrix, destination,  curr_position):
+def world_to_pixel(K, rgb_matrix, cam_matrix, destination,  curr_position):
+
+    cam_y_coordinate = cam_matrix[2, 3]
 
     point_3d = np.ones((4, destination.shape[1]))
     point_3d[0] = destination[0]
@@ -797,6 +805,8 @@ def world_to_pixel(K, rgb_matrix, destination,  curr_position):
     # cam_coords = rgb_matrix @ point_3d[:, None]
     cam_coords = np.array([cam_coords[1], cam_coords[2]*-1, cam_coords[0]])
     cam_coords = cam_coords[:, cam_coords[2, :] > 0]
+    cam_coords[1] = cam_y_coordinate
+
     points_2d = np.dot(K, cam_coords)
 
     points_2d = np.array([
@@ -808,6 +818,7 @@ def world_to_pixel(K, rgb_matrix, destination,  curr_position):
     points_2d = np.round(points_2d, decimals=2)
     return points_2d
 
+# def debug_pixel_to_world():
 
 def pixel_to_world(image, weak_ref, weak_agent, screen_pos, K, destination, set_destination=True):
     global command_given
@@ -828,8 +839,8 @@ def pixel_to_world(image, weak_ref, weak_agent, screen_pos, K, destination, set_
     depth_cam_matrix = dc_weak.get_transform().get_matrix()
     depth_cam_matrix_inv = dc_weak.get_transform().get_inverse_matrix()
 
-    depth_cam_matrix = np.round(np.array(depth_cam_matrix), decimals=2)
-    depth_cam_matrix_inv = np.round(np.array(depth_cam_matrix_inv), decimals=2)
+    depth_cam_matrix = np.round(np.array(depth_cam_matrix), decimals=1)
+    depth_cam_matrix_inv = np.round(np.array(depth_cam_matrix_inv), decimals=1)
 
     vehicle_matrix = agent_weak._vehicle.get_transform().get_matrix()
     # vehicle_matrix_inv = agent_weak._vehicle.get_transform().get_inverse_matrix()
@@ -839,6 +850,8 @@ def pixel_to_world(image, weak_ref, weak_agent, screen_pos, K, destination, set_
     print("=========================")
     print("Depth Camera Matrix:")
     pprint(depth_cam_matrix)
+    print("Depth Camera inverse Matrix:")
+    print(depth_cam_matrix_inv)
     print("Vehicle Matrix:")
     pprint(vehicle_matrix)
     print("=========================")
@@ -1013,8 +1026,8 @@ def game_loop(args):
             agent = BehaviorAgent(world.player, behavior=args.behavior)
 
         # Ignore Rules
-        # agent.ignore_traffic_lights(True)
-        # agent.ignore_stop_signs(True)
+        agent.ignore_traffic_lights(False)
+        agent.ignore_stop_signs(False)
         # agent.follow_speed_limits(True)
         # agent.set_target_speed(10)
 
@@ -1060,8 +1073,8 @@ def game_loop(args):
 
         handled = False
 
-        for file_ in os.listdir(temp_dir):
-            shutil.rmtree(os.path.join(temp_dir, file_))
+        # for file_ in os.listdir(temp_dir):
+        #     shutil.rmtree(os.path.join(temp_dir, file_))
 
         command_given = False
         # currently saving, need to start next episode, delete current episode
@@ -1081,8 +1094,8 @@ def game_loop(args):
             curr_position = agent._vehicle.get_transform().location
 
             if saving[2]:
-                if str(episode_number) is os.listdir('_out'):
-                    shutil.rmtree(f'_out/{episode_number}')
+                # if str(episode_number) is os.listdir('_out'):
+                #     shutil.rmtree(f'_out/{episode_number}')
                 saving[2] = False
 
             if pygame.mouse.get_pressed()[0] and not handled:
@@ -1090,7 +1103,8 @@ def game_loop(args):
                 if saving[0]:
                     if saving[1]:
                         saving[1] = False
-                        episode_number += 1
+                        episode_number = len(os.listdir(temp_dir))
+                        # episode_number += 1
                         os.makedirs(f'_out/{episode_number}', exist_ok=True)
                         command = input('Enter Command: ')
                         # command = 'a'
@@ -1098,6 +1112,7 @@ def game_loop(args):
                             f.write(command)
                         np.save(
                             f'_out/{episode_number}/camera_intrinsic.npy', K)
+                        # episode_number += 1
                     # episode_number = -episode_number
 
                 screen_pos = pygame.mouse.get_pos()
@@ -1114,11 +1129,11 @@ def game_loop(args):
 
             handled = pygame.mouse.get_pressed()[0]
 
-            if agent.done() and command_given:
-                command_given = False
-                print('Done')
+            # if agent.done() and command_given:
+            #     command_given = False
+            #     print('Done')
 
-                saving = [True, False, False]
+            #     saving = [True, False, False]
 
             if agent.target_destination:
                 destination = agent.target_destination
@@ -1127,8 +1142,8 @@ def game_loop(args):
 
                 points_2d = []
 
-                x_offsets = np.linspace(-0.5, 0.5, num=25)
-                y_offsets = np.linspace(-0.5, 0.5, num=25)
+                x_offsets = np.linspace(-0.25, 0.25, num=25)
+                y_offsets = np.linspace(-0.25, 0.25, num=25)
                 X, Y = np.meshgrid(x_offsets, y_offsets)
 
                 mesh = np.dstack([X, Y])
@@ -1139,8 +1154,12 @@ def game_loop(args):
                 dest = np.array([destination.x, destination.y, destination.z])
 
                 rgb_camera = world.camera_manager.sensor
+                # print(np.round(rgb_camera.get_transform().get_inverse_matrix(), decimals=2))
                 rgb_matrix = rgb_camera.get_transform().get_inverse_matrix()[
                     :3]
+                
+                cam_matrix = rgb_camera.get_transform().get_matrix()
+                cam_matrix = np.array(cam_matrix)
 
                 curr_position = agent._vehicle.get_transform().location
 
@@ -1148,21 +1167,30 @@ def game_loop(args):
                     [curr_position.x, curr_position.y, curr_position.z])
 
                 annotations = world_to_pixel(
-                    K, rgb_matrix, dest.reshape(3, 1)+mesh, pos).T
+                    K, rgb_matrix, cam_matrix, dest.reshape(3, 1)+mesh, pos).T
 
                 for i in range(annotations.shape[0]):
                     points_2d.append(annotations[i])
                     # pprint(annotations[i])
+
+                if (agent.done() or distance < 4) and command_given:
+                    command_given = False
+                    print('Done', distance)
+
+                    saving = [True, False, False]
 
                 world.tick(clock)
                 world.render(display)
 
                 for point in annotations:
                     pygame.draw.circle(display, (0, 255, 0),
-                                       (point[0], point[1]), 10)
+                                       (point[0], point[1]), 20)
                 pygame.display.flip()
             else:
-                world.tick(clock)
+                if command_given:
+                    world.tick(clock)
+                else:
+                    world.world.wait_for_tick()
                 world.render(display)
                 pygame.display.flip()
             # world.tick(clock)
