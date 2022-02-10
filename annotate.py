@@ -47,7 +47,7 @@ def annotate(args):
             matrix_dir = os.path.join(args.dir, episode, 'inverse_matrix')
             if os.path.exists(annotation_dir) and (len(os.listdir(annotation_dir)) == len(os.listdir(image_dir)) == len(os.listdir(matrix_dir))):
                 print(f"Skipping {episode}")
-                pass
+                continue
             else:
                 shutil.rmtree(os.path.join(args.dir, episode, 'annotations'))
         except:
@@ -102,8 +102,8 @@ def annotate(args):
                 y = round(annotations[i, 1])
                 if x < 0 or x >= args.width or y < 0 or y >= args.height:
                     continue
-                im = cv2.circle(im, (round(annotations[i, 0]), round(
-                    annotations[i, 1])), 4, (0, 255, 0), thickness=-1)
+                # import pdb; pdb.set_trace()
+                im = cv2.circle(im, (int(x), int(y)), 4, (0, 255, 0), thickness=-1)
 
             # for x_offset in np.linspace(-2, 2, num=150):
             #     for y_offset in np.linspace(-2, 2, num=150):
