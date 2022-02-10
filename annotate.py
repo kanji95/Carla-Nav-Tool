@@ -42,7 +42,14 @@ def annotate(args):
     print(episodes)
     for episode in episodes:
         try:
-            shutil.rmtree(os.path.join(args.dir, episode, 'annotations'))
+            annotation_dir = os.path.join(args.dir, episode, 'annotations')
+            image_dir = os.path.join(args.dir, episode, 'images')
+            matrix_dir = os.path.join(args.dir, episode, 'inverse_matrix')
+            if os.path.exists(annotation_dir) and (len(os.listdir(annotation_dir)) == len(os.listdir(image_dir)) == len(os.listdir(matrix_dir))):
+                print(f"Skipping {episode}")
+                pass
+            else:
+                shutil.rmtree(os.path.join(args.dir, episode, 'annotations'))
         except:
             pass
         os.makedirs(os.path.join(args.dir, episode,

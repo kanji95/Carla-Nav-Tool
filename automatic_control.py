@@ -927,8 +927,8 @@ def game_loop(args):
 
         handled = False
 
-        for file_ in os.listdir(temp_dir):
-            shutil.rmtree(os.path.join(temp_dir, file_))
+        # for file_ in os.listdir(temp_dir):
+        #     shutil.rmtree(os.path.join(temp_dir, file_))
 
         checked = False
         while True:

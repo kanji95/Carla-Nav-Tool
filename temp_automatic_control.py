@@ -1212,8 +1212,8 @@ def game_loop(args):
 
         handled = False
 
-        for file_ in os.listdir(temp_dir):
-            shutil.rmtree(os.path.join(temp_dir, file_))
+        # for file_ in os.listdir(temp_dir):
+        #     shutil.rmtree(os.path.join(temp_dir, file_))
 
         command_given = False
         # currently saving, need to start next episode, delete current episode
@@ -1235,10 +1235,10 @@ def game_loop(args):
 
             if saving[2]:
                 # if str(episode_number) is os.listdir('_out'):
-                try:
-                    shutil.rmtree(f'_out/{episode_number}')
-                except:
-                    print(f'Unable to delete _out/{episode_number}')
+                # try:
+                #     shutil.rmtree(f'_out/{episode_number}')
+                # except:
+                #     print(f'Unable to delete _out/{episode_number}')
                 saving[2] = False
 
             if pygame.mouse.get_pressed()[0] and not handled:
@@ -1247,7 +1247,8 @@ def game_loop(args):
                     if saving[1]:
                         saving[1] = False
                         target_number = 0
-                        episode_number += 1
+                        # episode_number += 1
+                        episode_number = len(os.listdir(temp_dir))
                         os.makedirs(f'_out/{episode_number}', exist_ok=True)
                         command = input('Enter Command: ')
                         # command = 'a'
