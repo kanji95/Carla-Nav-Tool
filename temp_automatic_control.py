@@ -1218,7 +1218,10 @@ def game_loop(args):
         command_given = False
         # currently saving, need to start next episode, delete current episode
         saving = [True, True, False]
-        episode_number = 0
+        if os.listdir(temp_dir) == 0:
+            episode_number = -1
+        else:
+            episode_number = max([int(x) for x in os.listdir(temp_dir)])
         target_number = 0
         checked = False
 
@@ -1234,11 +1237,11 @@ def game_loop(args):
             curr_position = agent._vehicle.get_transform().location
 
             if saving[2]:
-                # if str(episode_number) is os.listdir('_out'):
-                # try:
-                #     shutil.rmtree(f'_out/{episode_number}')
-                # except:
-                #     print(f'Unable to delete _out/{episode_number}')
+                if str(episode_number) is os.listdir('_out'):
+                    try:
+                        shutil.rmtree(f'_out/{episode_number}')
+                    except:
+                        print(f'Unable to delete _out/{episode_number}')
                 saving[2] = False
 
             if pygame.mouse.get_pressed()[0] and not handled:
@@ -1247,8 +1250,7 @@ def game_loop(args):
                     if saving[1]:
                         saving[1] = False
                         target_number = 0
-                        # episode_number += 1
-                        episode_number = len(os.listdir(temp_dir))
+                        episode_number += 1
                         os.makedirs(f'_out/{episode_number}', exist_ok=True)
                         command = input('Enter Command: ')
                         # command = 'a'
