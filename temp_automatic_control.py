@@ -1218,7 +1218,7 @@ def game_loop(args):
         command_given = False
         # currently saving, need to start next episode, delete current episode
         saving = [True, True, False]
-        if os.listdir(temp_dir) == 0:
+        if len(os.listdir(temp_dir)) == 0:
             episode_number = -1
         else:
             episode_number = max([int(x) for x in os.listdir(temp_dir)])
