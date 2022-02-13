@@ -73,6 +73,11 @@ def annotate(args):
 
         for i, frame in enumerate(frames):
             name = '.'.join(frame.split('.')[:-1])
+            if i >= float_coordinates.shape[0]:
+                break
+            if i >= float_coordinates.shape[0]:
+                break
+
             try:
                 inverse_matrix = np.load(os.path.join(
                     args.dir, episode, 'inverse_matrix', name+'.npy'))
@@ -83,6 +88,9 @@ def annotate(args):
             # annotation = world_to_pixel(
             #     K, inverse_matrix, target_coordinate, relative_coords[i])
             im = cv2.imread(os.path.join(args.dir, episode, 'images', frame))
+
+            if im is None:
+                break
 
             x_offsets = np.linspace(-2, 2, num=150)
             y_offsets = np.linspace(-2, 2, num=150)
@@ -103,7 +111,8 @@ def annotate(args):
                 if x < 0 or x >= args.width or y < 0 or y >= args.height:
                     continue
                 # import pdb; pdb.set_trace()
-                im = cv2.circle(im, (int(x), int(y)), 4, (0, 255, 0), thickness=-1)
+                im = cv2.circle(im, (int(x), int(y)), 4,
+                                (0, 255, 0), thickness=-1)
 
             # for x_offset in np.linspace(-2, 2, num=150):
             #     for y_offset in np.linspace(-2, 2, num=150):

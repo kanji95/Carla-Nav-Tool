@@ -1083,7 +1083,7 @@ def game_loop(args):
         percentagePedestriansCrossing = 0.0
         # 1. take all the random locations to spawn
         spawn_points = []
-        number_of_walkers = 20
+        number_of_walkers = 70
         for i in range(number_of_walkers):
             spawn_point = carla.Transform()
             loc = world.world.get_random_location_from_navigation()
@@ -1237,11 +1237,11 @@ def game_loop(args):
             curr_position = agent._vehicle.get_transform().location
 
             if saving[2]:
-                if str(episode_number) is os.listdir('_out'):
-                    try:
-                        shutil.rmtree(f'_out/{episode_number}')
-                    except:
-                        print(f'Unable to delete _out/{episode_number}')
+                try:
+                    shutil.rmtree(f'_out/{episode_number}')
+                    print(f'Deleted _out/{episode_number}')
+                except:
+                    print(f'Unable to delete _out/{episode_number}')
                 saving[2] = False
 
             if pygame.mouse.get_pressed()[0] and not handled:
@@ -1345,9 +1345,9 @@ def game_loop(args):
             if command_given:
                 control = agent.run_step()
                 control.manual_gear_shift = False
-            if agent.target_destination:
-                world.player.apply_control(control)
-                # pass
+                if agent.target_destination:
+                    world.player.apply_control(control)
+                    # pass
 
     finally:
 
