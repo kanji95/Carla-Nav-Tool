@@ -980,7 +980,7 @@ def game_loop(args):
             random.seed(args.seed)
 
         client = carla.Client(args.host, args.port)
-        client.set_timeout(4.0)
+        client.set_timeout(40.0)
         client.load_world(
             f'{args.map}', carla.MapLayer.Buildings | carla.MapLayer.ParkedVehicles)
 
