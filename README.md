@@ -10,7 +10,7 @@ Official Code | [Paper](https://arxiv.org/pdf/2209.11972.pdf) | [Video](https://
  
 ## Usage
 
-Build Carla by following the instructions in this repo: https://github.com/carla-simulator/carla
+Build Carla by following the instructions in this [repo](https://github.com/carla-simulator/carla)
 
 Run the following Command to start the server: (Refer to this [folder](https://github.com/carla-simulator/carla/tree/master/PythonAPI))
 > CarlaUE4.exe -windowed -carla-server -quality-level=Low
