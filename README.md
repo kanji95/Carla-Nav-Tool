@@ -10,4 +10,8 @@ Official Code | [Paper](https://arxiv.org/pdf/2209.11972.pdf) | [Video](https://
  
 ## Usage
 
-Coming Soon
+CarlaUE4.exe -windowed -carla-server -quality-level=Low
+
+## Acknowledgements
+
+Code borrowed from: https://github.com/carla-simulator/carla/tree/master/PythonAPI/examples
