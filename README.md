@@ -10,7 +10,13 @@ Official Code | [Paper](https://arxiv.org/pdf/2209.11972.pdf) | [Video](https://
  
 ## Usage
 
-CarlaUE4.exe -windowed -carla-server -quality-level=Low
+Build Carla by following the instructions in this repo: https://github.com/carla-simulator/carla
+
+Run the following Command to start the server
+> CarlaUE4.exe -windowed -carla-server -quality-level=Low
+
+Run the following command to start data collection on client side
+> python data_collect.py --host <HOST_ID> --port <PORT_NUM> --map <MAP_ID> 
 
 ## Acknowledgements
 
