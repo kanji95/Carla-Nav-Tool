@@ -23,3 +23,14 @@ Run the following command to start data collection on client side:
 ## Acknowledgements
 
 Code borrowed from: https://github.com/carla-simulator/carla/tree/master/PythonAPI/examples
+
+## Citation
+
+If you found our work useful to your research, please consider citing:
+
+@article{jain2022ground,
+  title={Ground then Navigate: Language-guided Navigation in Dynamic Scenes},
+  author={Jain, Kanishk and Chhangani, Varun and Tiwari, Amogh and Krishna, K Madhava and Gandhi, Vineet},
+  journal={arXiv preprint arXiv:2209.11972},
+  year={2022}
+}
