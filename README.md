@@ -9,6 +9,9 @@ Official Code | [Paper](https://arxiv.org/pdf/2209.11972.pdf) | [Video](https://
 
 ## Dataset
 Coming Soon
+
+## Training
+Use this [repo](https://github.com/kanji95/Carla-Nav-Inference) as reference for training
  
 ## Usage
 
